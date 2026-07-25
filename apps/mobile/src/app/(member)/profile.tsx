@@ -13,7 +13,6 @@ import {
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService, RegisterProfileData } from '../../services/api';
 
@@ -86,22 +85,24 @@ export default function ProfileScreen() {
   }, [isSignedIn]);
 
   const handlePickAvatar = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Permission Denied', 'Permission to access photo gallery is required.');
-      return;
-    }
+    try {
+      // Safely import expo-image-picker
+      const ImagePicker = require('expo-image-picker');
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission?.granted) {
+        Alert.alert('Permission Denied', 'Permission to access photo gallery is required.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setIsUploadingAvatar(true);
-      try {
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setIsUploadingAvatar(true);
         const token = await getToken();
         if (token) {
           const updated = await ApiService.uploadAvatar(token, result.assets[0].uri);
@@ -111,11 +112,19 @@ export default function ProfileScreen() {
           }));
           await loadProfile();
         }
-      } catch (err: any) {
-        Alert.alert('Upload Failed', err.message || 'Failed to upload profile photo to Cloudinary.');
-      } finally {
-        setIsUploadingAvatar(false);
       }
+    } catch (err: any) {
+      console.error('Image picker error:', err);
+      if (err?.message?.includes('ExponentImagePicker')) {
+        Alert.alert(
+          'Rebuild Required',
+          'A new native module was added. Please re-run "npx expo run:android" in your mobile terminal to rebuild the app binary.'
+        );
+      } else {
+        Alert.alert('Upload Error', err.message || 'Failed to pick image.');
+      }
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
