@@ -7,8 +7,8 @@ const server = http.createServer(app);
 
 // ─── Socket.io will be initialized here later ──
 
-server.listen(config.port, () => {
-  logger.info(`🚀 MYS Server running on port ${config.port}`);
+server.listen(config.port, '0.0.0.0', () => {
+  logger.info(`🚀 MYS Server running on port ${config.port} (0.0.0.0)`);
   logger.info(`📍 Environment: ${config.nodeEnv}`);
   logger.info(`🏥 Health check: http://localhost:${config.port}/health`);
   logger.info(`📡 API base: http://localhost:${config.port}/api/v1`);

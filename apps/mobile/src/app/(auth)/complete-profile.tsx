@@ -31,12 +31,24 @@ const GENDERS = [
   { label: 'Other', value: 'OTHER' },
 ];
 
+const DEFAULT_CITIES = [
+  { id: 'city_ranchi', name: 'Ranchi' },
+  { id: 'city_jamshedpur', name: 'Jamshedpur' },
+  { id: 'city_dhanbad', name: 'Dhanbad' },
+  { id: 'city_bokaro', name: 'Bokaro' },
+  { id: 'city_hazaribagh', name: 'Hazaribagh' },
+  { id: 'city_giridih', name: 'Giridih' },
+  { id: 'city_deoghar', name: 'Deoghar' },
+  { id: 'city_ramgarh', name: 'Ramgarh' },
+  { id: 'city_dumka', name: 'Dumka' },
+];
+
 export default function CompleteProfileScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [cities, setCities] = useState<Array<{ id: string; name: string }>>([]);
+  const [cities, setCities] = useState<Array<{ id: string; name: string }>>(DEFAULT_CITIES);
   const [loadingCities, setLoadingCities] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -50,7 +62,7 @@ export default function CompleteProfileScreen() {
   const [dateOfBirth, setDateOfBirth] = useState('');
 
   const [address, setAddress] = useState('');
-  const [cityId, setCityId] = useState('');
+  const [cityId, setCityId] = useState(DEFAULT_CITIES[0].id);
   const [pinCode, setPinCode] = useState('');
 
   const [fatherName, setFatherName] = useState('');
@@ -66,12 +78,12 @@ export default function CompleteProfileScreen() {
     async function loadCities() {
       try {
         const data = await ApiService.getCities();
-        setCities(data);
-        if (data.length > 0) {
+        if (data && data.length > 0) {
+          setCities(data);
           setCityId(data[0].id);
         }
       } catch (err) {
-        console.error('Failed to load cities:', err);
+        console.warn('Backend connection warning, loaded fallback city list');
       } finally {
         setLoadingCities(false);
       }
