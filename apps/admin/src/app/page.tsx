@@ -1,8 +1,7 @@
 import {
   SignInButton,
   SignUpButton,
-  SignedIn,
-  SignedOut,
+  Show,
   UserButton,
 } from "@clerk/nextjs";
 
@@ -22,7 +21,7 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-4">
-          <SignedOut>
+          <Show when="signed-out">
             <SignInButton mode="modal">
               <button className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
                 Sign In
@@ -33,11 +32,11 @@ export default function Home() {
                 Sign Up
               </button>
             </SignUpButton>
-          </SignedOut>
+          </Show>
 
-          <SignedIn>
+          <Show when="signed-in">
             <UserButton showName />
-          </SignedIn>
+          </Show>
         </div>
       </header>
 
@@ -51,21 +50,21 @@ export default function Home() {
             Enterprise Admin Portal — Member Verification, Event Management, Notices & Analytics
           </p>
 
-          <SignedOut>
+          <Show when="signed-out">
             <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6 backdrop-blur">
               <p className="text-sm text-slate-300">
                 Please sign in with your administrator account to access management features.
               </p>
             </div>
-          </SignedOut>
+          </Show>
 
-          <SignedIn>
+          <Show when="signed-in">
             <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/30 p-6 backdrop-blur">
               <p className="text-sm font-medium text-emerald-400">
                 ✅ Authenticated — Admin Dashboard Active
               </p>
             </div>
-          </SignedIn>
+          </Show>
         </div>
       </main>
     </div>
