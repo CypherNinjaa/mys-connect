@@ -106,11 +106,6 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Gotra</Text>
-          <Text style={styles.infoValue}>{profile?.gotra || 'Not specified'}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Native Place</Text>
           <Text style={styles.infoValue}>{profile?.nativePlace || 'Not specified'}</Text>
         </View>

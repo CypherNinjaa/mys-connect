@@ -92,7 +92,6 @@ export interface ProfileDTO {
   organization?: string | null;
   designation?: string | null;
   fatherName?: string | null;
-  gotra?: string | null;
   nativePlace?: string | null;
   bio?: string | null;
 }

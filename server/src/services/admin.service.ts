@@ -43,7 +43,6 @@ export class AdminService {
         { phone: { contains: search, mode: 'insensitive' } },
         { profile: { firstName: { contains: search, mode: 'insensitive' } } },
         { profile: { lastName: { contains: search, mode: 'insensitive' } } },
-        { profile: { gotra: { contains: search, mode: 'insensitive' } } },
         { profile: { occupation: { contains: search, mode: 'insensitive' } } },
       ];
     }

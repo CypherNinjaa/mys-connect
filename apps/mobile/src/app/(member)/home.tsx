@@ -55,7 +55,7 @@ export default function HomeScreen() {
   }
 
   const profile = user?.profile;
-  const isProfileIncomplete = !profile?.gotra || !profile?.fatherName || !user?.phone;
+  const isProfileIncomplete = !profile?.nativePlace || !profile?.fatherName || !user?.phone;
 
   return (
     <ScrollView
@@ -96,7 +96,7 @@ export default function HomeScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.completeProfileTitle}>Complete Your Member Profile</Text>
             <Text style={styles.completeProfileSub}>
-              Tap to set your family gotra, native place & details in Profile.
+              Tap to set your family native place & details in Profile.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.primary[500]} />
@@ -139,7 +139,7 @@ export default function HomeScreen() {
         >
           <Ionicons name="person-outline" size={28} color={Colors.primary[500]} style={styles.cardIcon} />
           <Text style={styles.cardTitle}>My Account</Text>
-          <Text style={styles.cardSub}>View Profile & Gotra</Text>
+          <Text style={styles.cardSub}>View Profile & Details</Text>
         </TouchableOpacity>
       </View>
 

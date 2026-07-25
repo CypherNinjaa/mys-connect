@@ -17,7 +17,6 @@ export interface RegisterProfileInput {
   organization?: string;
   designation?: string;
   fatherName?: string;
-  gotra?: string;
   nativePlace?: string;
   bio?: string;
 }
@@ -100,7 +99,6 @@ export class UserService {
         organization: data.organization,
         designation: data.designation,
         fatherName: data.fatherName,
-        gotra: data.gotra,
         nativePlace: data.nativePlace,
         bio: data.bio,
       },
@@ -120,7 +118,6 @@ export class UserService {
         organization: data.organization,
         designation: data.designation,
         fatherName: data.fatherName,
-        gotra: data.gotra,
         nativePlace: data.nativePlace,
         bio: data.bio,
       },

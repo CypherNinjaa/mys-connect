@@ -66,7 +66,6 @@ export default function CompleteProfileScreen() {
   const [pinCode, setPinCode] = useState('');
 
   const [fatherName, setFatherName] = useState('');
-  const [gotra, setGotra] = useState('');
   const [nativePlace, setNativePlace] = useState('');
 
   const [occupation, setOccupation] = useState('');
@@ -142,7 +141,6 @@ export default function CompleteProfileScreen() {
         cityId: cityId || undefined,
         pinCode: pinCode.trim() || undefined,
         fatherName: fatherName.trim() || undefined,
-        gotra: gotra.trim() || undefined,
         nativePlace: nativePlace.trim() || undefined,
         occupation: occupation.trim() || undefined,
         organization: organization.trim() || undefined,
@@ -327,17 +325,6 @@ export default function CompleteProfileScreen() {
               placeholderTextColor={Colors.neutral[400]}
               value={fatherName}
               onChangeText={setFatherName}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Gotra</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Kakani, Toshniwal, Rathi..."
-              placeholderTextColor={Colors.neutral[400]}
-              value={gotra}
-              onChangeText={setGotra}
             />
           </View>
 

@@ -142,7 +142,6 @@ model Profile {
 
   // Family
   fatherName      String?
-  gotra           String?
   nativePlace     String?
 
   // Social

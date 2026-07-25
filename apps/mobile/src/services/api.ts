@@ -14,7 +14,6 @@ export interface RegisterProfileData {
   organization?: string;
   designation?: string;
   fatherName?: string;
-  gotra?: string;
   nativePlace?: string;
   bio?: string;
 }
