@@ -18,9 +18,6 @@ export const requireAuth = (
     throw new AppError('Unauthorized. Please sign in.', 401);
   }
 
-  // Ensure req.auth is populated
-  (req as any).auth = auth;
-
   logger.debug(`Authenticated user: ${auth.userId}`);
   next();
 };
@@ -29,13 +26,9 @@ export const requireAuth = (
  * Optional auth — does not throw if unauthenticated.
  */
 export const optionalAuth = (
-  req: Request,
+  _req: Request,
   _res: Response,
   next: NextFunction,
 ): void => {
-  const auth = getAuth(req);
-  if (auth?.userId) {
-    (req as any).auth = auth;
-  }
   next();
 };

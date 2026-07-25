@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { getAuth } from '@clerk/express';
 import { UserService } from '../services/user.service';
 
 export class UserController {
@@ -8,15 +9,14 @@ export class UserController {
    */
   static async getMe(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by requireAuth/userResolver
-      const clerkId = req.auth?.userId;
+      const auth = getAuth(req);
+      const clerkId = auth?.userId;
       // @ts-expect-error - Attached by userResolver
       const user = req.user;
 
       if (!user && clerkId) {
         // Auto-sync user if not in DB yet
-        // @ts-expect-error - Clerk session claims email
-        const email = req.auth?.sessionClaims?.email || req.auth?.userId;
+        const email = (auth?.sessionClaims as any)?.email || clerkId;
         const syncedUser = await UserService.syncUserFromClerk(clerkId, email);
         return res.json({
           success: true,
