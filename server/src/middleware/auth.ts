@@ -18,7 +18,6 @@ export const requireAuth = (
     throw new AppError('Unauthorized. Please sign in.', 401);
   }
 
-  logger.debug(`Authenticated user: ${auth.userId}`);
   next();
 };
 
