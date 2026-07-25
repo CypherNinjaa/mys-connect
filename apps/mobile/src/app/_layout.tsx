@@ -4,19 +4,18 @@ import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-const publishableKey =
-  process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-  process.env.CLERK_PUBLISHABLE_KEY ||
-  'pk_test_Z2VudGxlLWFtb2ViYS00LmNsZXJrLmFjY291bnRzLmRldiQ';
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
 if (!publishableKey) {
-  console.warn('Missing Clerk Publishable Key in environment variables.');
+  throw new Error(
+    'Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in environment variables. Please check your apps/mobile/.env file.'
+  );
 }
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <ClerkProvider publishableKey={publishableKey || 'pk_test_placeholder'} tokenCache={tokenCache}>
+      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
         <StatusBar style="light" />
         <Slot />
       </ClerkProvider>
