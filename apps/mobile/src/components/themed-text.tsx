@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     color: '#3c87f7',
   },
   code: {
-    fontFamily: Fonts.mono,
+    fontFamily: Platform.select({ ios: 'Courier', android: 'monospace', default: 'monospace' }),
     fontWeight: Platform.select({ android: 700 }) ?? 500,
     fontSize: 12,
   },
