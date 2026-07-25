@@ -7,10 +7,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Image,
+  Alert,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService, RegisterProfileData } from '../../services/api';
 
@@ -39,6 +42,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Edit Form Fields
@@ -80,6 +84,40 @@ export default function ProfileScreen() {
   useEffect(() => {
     loadProfile();
   }, [isSignedIn]);
+
+  const handlePickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Denied', 'Permission to access photo gallery is required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setIsUploadingAvatar(true);
+      try {
+        const token = await getToken();
+        if (token) {
+          const updated = await ApiService.uploadAvatar(token, result.assets[0].uri);
+          setUser((prev: any) => ({
+            ...prev,
+            profile: { ...prev?.profile, avatarUrl: updated?.avatarUrl || updated },
+          }));
+          await loadProfile();
+        }
+      } catch (err: any) {
+        Alert.alert('Upload Failed', err.message || 'Failed to upload profile photo to Cloudinary.');
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!firstName.trim() || !lastName.trim()) {
@@ -132,21 +170,42 @@ export default function ProfileScreen() {
   }
 
   const profile = user?.profile;
+  const isRealEmail = user?.email && !user.email.includes('@user.clerk') && !user.email.includes('user_');
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header Avatar & Info */}
       <View style={styles.profileHeader}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarText}>
-            {profile?.firstName ? profile.firstName[0].toUpperCase() : 'M'}
-          </Text>
-        </View>
+        {/* Cloudinary Avatar Uploader */}
+        <TouchableOpacity
+          style={styles.avatarWrapper}
+          onPress={handlePickAvatar}
+          activeOpacity={0.8}
+        >
+          <View style={styles.avatarCircle}>
+            {isUploadingAvatar ? (
+              <ActivityIndicator color={Colors.secondary[500]} />
+            ) : profile?.avatarUrl ? (
+              <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>
+                {profile?.firstName ? profile.firstName[0].toUpperCase() : 'M'}
+              </Text>
+            )}
+          </View>
+
+          {/* Camera Badge */}
+          <View style={styles.cameraBadge}>
+            <Ionicons name="camera" size={14} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
 
         <Text style={styles.nameText}>
           {profile?.firstName ? `${profile.firstName} ${profile.lastName}` : 'Member'}
         </Text>
-        <Text style={styles.emailText}>{user?.email}</Text>
+        
+        {/* Only display real user emails; hide internal Clerk IDs */}
+        {isRealEmail && <Text style={styles.emailText}>{user.email}</Text>}
 
         <View style={styles.statusBadge}>
           <Text style={styles.statusBadgeText}>{user?.status || 'ACTIVE'}</Text>
@@ -351,21 +410,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.lg,
   },
+  avatarWrapper: {
+    position: 'relative',
+    marginBottom: Spacing.sm,
+  },
   avatarCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: Colors.primary[600],
     borderWidth: 3,
     borderColor: Colors.secondary[500],
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
     fontSize: 32,
     fontWeight: '800',
     color: Colors.secondary[500],
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: Colors.secondary[500],
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.primary[500],
   },
   nameText: {
     fontSize: 20,

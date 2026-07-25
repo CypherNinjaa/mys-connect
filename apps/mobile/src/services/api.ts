@@ -59,6 +59,37 @@ export class ApiService {
   }
 
   /**
+   * Upload profile image to Cloudinary
+   */
+  static async uploadAvatar(token: string, imageUri: string) {
+    const formData = new FormData();
+    const filename = imageUri.split('/').pop() || 'avatar.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+    // @ts-expect-error - React Native FormData accepts uri/name/type object
+    formData.append('avatar', {
+      uri: imageUri,
+      name: filename,
+      type,
+    });
+
+    const res = await fetch(`${API.baseUrl}/users/avatar`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error?.message || 'Failed to upload avatar');
+    }
+    return data.data;
+  }
+
+  /**
    * Fetch list of active cities for location dropdown
    */
   static async getCities() {

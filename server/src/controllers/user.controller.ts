@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getAuth } from '@clerk/express';
 import { UserService } from '../services/user.service';
+import { uploadToCloudinary } from '../utils/cloudinary';
 
 export class UserController {
   /**
@@ -44,8 +45,36 @@ export class UserController {
       const result = await UserService.completeRegistration(userId, req.body);
       res.json({
         success: true,
-        message: 'Profile submitted successfully. Awaiting admin approval.',
+        message: 'Profile submitted successfully.',
         data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/users/avatar
+   * Upload profile avatar image to Cloudinary
+   */
+  static async uploadAvatar(req: Request, res: Response, next: NextFunction) {
+    try {
+      // @ts-expect-error - Attached by userResolver
+      const userId = req.user?.id;
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'Image file is required.' },
+        });
+      }
+
+      const avatarUrl = await uploadToCloudinary(req.file.buffer, 'mys-connect/avatars');
+      const profile = await UserService.updateAvatar(userId, avatarUrl);
+
+      res.json({
+        success: true,
+        message: 'Avatar uploaded successfully.',
+        data: profile,
       });
     } catch (error) {
       next(error);

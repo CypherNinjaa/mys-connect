@@ -1,7 +1,13 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAuth } from '../middleware/auth';
 import { userResolver } from '../middleware/userResolver';
 import { UserController } from '../controllers/user.controller';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+});
 
 const router = Router();
 
@@ -14,5 +20,6 @@ router.use(userResolver);
 
 router.get('/me', UserController.getMe);
 router.post('/register', UserController.register);
+router.post('/avatar', upload.single('avatar'), UserController.uploadAvatar);
 
 export { router as userRoutes };

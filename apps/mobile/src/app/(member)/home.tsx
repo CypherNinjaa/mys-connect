@@ -57,7 +57,7 @@ export default function HomeScreen() {
   }
 
   const profile = user?.profile;
-  const isProfileIncomplete = !profile?.occupation || !user?.phone;
+  const isProfileIncomplete = !profile?.firstName || !user?.phone;
 
   return (
     <ScrollView
