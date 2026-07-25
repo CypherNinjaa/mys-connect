@@ -15,7 +15,7 @@ import { Colors, Spacing, APP } from '../../constants/theme';
 import { ApiService } from '../../services/api';
 
 export default function HomeScreen() {
-  const { getToken } = useAuth();
+  const { getToken, isSignedIn } = useAuth();
   const router = useRouter();
 
   const [user, setUser] = useState<any>(null);
@@ -24,13 +24,15 @@ export default function HomeScreen() {
 
   const loadUserData = async () => {
     try {
-      const token = await getToken();
-      if (token) {
-        const userData = await ApiService.getMe(token);
-        setUser(userData);
+      if (isSignedIn) {
+        const token = await getToken();
+        if (token) {
+          const userData = await ApiService.getMe(token);
+          setUser(userData);
+        }
       }
     } catch (err) {
-      console.error('Home screen user load error:', err);
+      // Quietly swallow for guest mode / unauthenticated session
     } finally {
       setLoading(false);
       setRefreshing(false);

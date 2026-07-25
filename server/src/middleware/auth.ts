@@ -1,23 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
+import { getAuth } from '@clerk/express';
 import { AppError } from './errorHandler';
 import { logger } from '../utils/logger';
 
 /**
  * Middleware to verify Clerk authentication.
- * Clerk's Express SDK middleware attaches `req.auth` after verification.
- * This middleware checks if the user is authenticated.
+ * Uses `@clerk/express` getAuth(req) helper.
  */
 export const requireAuth = (
   req: Request,
   _res: Response,
   next: NextFunction,
 ): void => {
-  // @ts-expect-error - Clerk middleware will attach auth object
-  const auth = req.auth;
+  const auth = getAuth(req);
 
   if (!auth?.userId) {
     throw new AppError('Unauthorized. Please sign in.', 401);
   }
+
+  // Ensure req.auth is populated
+  (req as any).auth = auth;
 
   logger.debug(`Authenticated user: ${auth.userId}`);
   next();
@@ -25,13 +27,15 @@ export const requireAuth = (
 
 /**
  * Optional auth — does not throw if unauthenticated.
- * Used for guest-accessible routes that show different content for members.
  */
 export const optionalAuth = (
   req: Request,
   _res: Response,
   next: NextFunction,
 ): void => {
-  // Simply pass through — Clerk middleware will still attach auth if present
+  const auth = getAuth(req);
+  if (auth?.userId) {
+    (req as any).auth = auth;
+  }
   next();
 };

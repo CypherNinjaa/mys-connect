@@ -13,7 +13,7 @@ import { Colors, Spacing, APP } from '../../constants/theme';
 import { ApiService } from '../../services/api';
 
 export default function ProfileScreen() {
-  const { getToken, signOut } = useAuth();
+  const { getToken, isSignedIn, signOut } = useAuth();
   const router = useRouter();
 
   const [user, setUser] = useState<any>(null);
@@ -22,19 +22,21 @@ export default function ProfileScreen() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const token = await getToken();
-        if (token) {
-          const data = await ApiService.getMe(token);
-          setUser(data);
+        if (isSignedIn) {
+          const token = await getToken();
+          if (token) {
+            const data = await ApiService.getMe(token);
+            setUser(data);
+          }
         }
       } catch (err) {
-        console.error('Profile load error:', err);
+        // Quietly swallow for guest mode / unauthenticated session
       } finally {
         setLoading(false);
       }
     }
     loadProfile();
-  }, []);
+  }, [isSignedIn]);
 
   const handleSignOut = async () => {
     await signOut();

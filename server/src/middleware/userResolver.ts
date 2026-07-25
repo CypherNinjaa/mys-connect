@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { getAuth } from '@clerk/express';
 import { prisma } from '../utils/prisma';
 import { AppError } from './errorHandler';
 import { UserStatus } from '@prisma/client';
@@ -9,8 +10,7 @@ export const userResolver = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
-    // @ts-expect-error - Clerk Express middleware attaches auth
-    const auth = req.auth;
+    const auth = getAuth(req);
     const clerkId = auth?.userId;
 
     if (!clerkId) {
@@ -29,7 +29,7 @@ export const userResolver = async (
 
     // Auto-create user if missing in DB
     if (!user) {
-      const primaryEmail = auth?.sessionClaims?.email || `${clerkId}@user.clerk`;
+      const primaryEmail = (auth?.sessionClaims as any)?.email || `${clerkId}@user.clerk`;
       user = await prisma.user.create({
         data: {
           clerkId,
@@ -50,12 +50,9 @@ export const userResolver = async (
     }
 
     // Attach to Request
-    // @ts-expect-error - Attach custom property to Express Request
-    req.user = user;
-    // @ts-expect-error - Attach custom property to Express Request
-    req.userRole = user.role;
-    // @ts-expect-error - Attach custom property to Express Request
-    req.userStatus = user.status;
+    (req as any).user = user;
+    (req as any).userRole = user.role;
+    (req as any).userStatus = user.status;
 
     next();
   } catch (error) {

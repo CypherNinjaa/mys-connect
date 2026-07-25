@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import { clerkMiddleware } from '@clerk/express';
 import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes';
@@ -10,10 +11,12 @@ const app = express();
 
 // ─── Security ─────────────────────────────
 app.use(helmet());
-app.use(cors({
-  origin: config.corsOrigin,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: config.corsOrigin,
+    credentials: true,
+  })
+);
 
 // ─── Parsing ──────────────────────────────
 app.use(express.json({ limit: '10mb' }));
@@ -21,6 +24,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // ─── Logging ──────────────────────────────
 app.use(morgan('dev'));
+
+// ─── Clerk Authentication Middleware ──────
+// Parses JWT from Bearer Authorization headers into req.auth
+app.use(clerkMiddleware());
 
 // ─── Health Check ─────────────────────────
 app.get('/health', (_req, res) => {
