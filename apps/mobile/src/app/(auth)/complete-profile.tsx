@@ -7,11 +7,10 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
-import { Colors, Spacing, Typography } from '../../constants/theme';
+import { Colors, Spacing } from '../../constants/theme';
 import { ApiService, RegisterProfileData } from '../../services/api';
 
 const BLOOD_GROUPS = [
@@ -47,7 +46,7 @@ export default function CompleteProfileScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [cities, setCities] = useState<Array<{ id: string; name: string }>>(DEFAULT_CITIES);
   const [loadingCities, setLoadingCities] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,9 +63,6 @@ export default function CompleteProfileScreen() {
   const [address, setAddress] = useState('');
   const [cityId, setCityId] = useState(DEFAULT_CITIES[0].id);
   const [pinCode, setPinCode] = useState('');
-
-  const [fatherName, setFatherName] = useState('');
-  const [nativePlace, setNativePlace] = useState('');
 
   const [occupation, setOccupation] = useState('');
   const [organization, setOrganization] = useState('');
@@ -107,7 +103,7 @@ export default function CompleteProfileScreen() {
 
   const handleNext = () => {
     if (!validateCurrentStep()) return;
-    if (step < 4) {
+    if (step < 3) {
       setStep((prev) => (prev + 1) as any);
     }
   };
@@ -140,15 +136,13 @@ export default function CompleteProfileScreen() {
         address: address.trim() || undefined,
         cityId: cityId || undefined,
         pinCode: pinCode.trim() || undefined,
-        fatherName: fatherName.trim() || undefined,
-        nativePlace: nativePlace.trim() || undefined,
         occupation: occupation.trim() || undefined,
         organization: organization.trim() || undefined,
         designation: designation.trim() || undefined,
       };
 
       await ApiService.registerProfile(token, profilePayload);
-      router.replace('/(auth)/pending-approval');
+      router.replace('/(member)/home');
     } catch (err: any) {
       console.error('Registration error:', err);
       setErrorMessage(err.message || 'Failed to submit profile registration.');
@@ -162,9 +156,9 @@ export default function CompleteProfileScreen() {
       {/* Progress Indicator */}
       <View style={styles.progressContainer}>
         <View style={styles.progressBarBg}>
-          <View style={[styles.progressBarFill, { width: `${(step / 4) * 100}%` }]} />
+          <View style={[styles.progressBarFill, { width: `${(step / 3) * 100}%` }]} />
         </View>
-        <Text style={styles.progressText}>Step {step} of 4</Text>
+        <Text style={styles.progressText}>Step {step} of 3</Text>
       </View>
 
       {errorMessage && (
@@ -312,39 +306,10 @@ export default function CompleteProfileScreen() {
         </View>
       )}
 
-      {/* Step 3: Family & Cultural */}
+      {/* Step 3: Professional Info */}
       {step === 3 && (
         <View style={styles.stepCard}>
-          <Text style={styles.sectionTitle}>3. Family & Cultural Details</Text>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Father's Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Shri..."
-              placeholderTextColor={Colors.neutral[400]}
-              value={fatherName}
-              onChangeText={setFatherName}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Native Place (Mul Nivas)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Didwana, Bikaner, Nagaur..."
-              placeholderTextColor={Colors.neutral[400]}
-              value={nativePlace}
-              onChangeText={setNativePlace}
-            />
-          </View>
-        </View>
-      )}
-
-      {/* Step 4: Professional Info */}
-      {step === 4 && (
-        <View style={styles.stepCard}>
-          <Text style={styles.sectionTitle}>4. Professional Profile</Text>
+          <Text style={styles.sectionTitle}>3. Professional Profile</Text>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Occupation / Field</Text>
@@ -389,7 +354,7 @@ export default function CompleteProfileScreen() {
           </TouchableOpacity>
         ) : <View />}
 
-        {step < 4 ? (
+        {step < 3 ? (
           <TouchableOpacity style={styles.primaryButton} onPress={handleNext}>
             <Text style={styles.primaryButtonText}>Next Step</Text>
           </TouchableOpacity>

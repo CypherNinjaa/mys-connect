@@ -91,8 +91,6 @@ export interface ProfileDTO {
   occupation?: string | null;
   organization?: string | null;
   designation?: string | null;
-  fatherName?: string | null;
-  nativePlace?: string | null;
   bio?: string | null;
 }
 

@@ -16,8 +16,6 @@ export interface RegisterProfileInput {
   occupation?: string;
   organization?: string;
   designation?: string;
-  fatherName?: string;
-  nativePlace?: string;
   bio?: string;
 }
 
@@ -98,8 +96,6 @@ export class UserService {
         occupation: data.occupation,
         organization: data.organization,
         designation: data.designation,
-        fatherName: data.fatherName,
-        nativePlace: data.nativePlace,
         bio: data.bio,
       },
       create: {
@@ -117,8 +113,6 @@ export class UserService {
         occupation: data.occupation,
         organization: data.organization,
         designation: data.designation,
-        fatherName: data.fatherName,
-        nativePlace: data.nativePlace,
         bio: data.bio,
       },
       include: { city: true },

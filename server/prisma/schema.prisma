@@ -140,10 +140,6 @@ model Profile {
   organization    String?
   designation     String?
 
-  // Family
-  fatherName      String?
-  nativePlace     String?
-
   // Social
   bio             String?
   

@@ -13,8 +13,6 @@ export interface RegisterProfileData {
   occupation?: string;
   organization?: string;
   designation?: string;
-  fatherName?: string;
-  nativePlace?: string;
   bio?: string;
 }
 

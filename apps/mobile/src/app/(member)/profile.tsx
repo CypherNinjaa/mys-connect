@@ -96,21 +96,6 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Cultural Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardSectionTitle}>Cultural & Family Info</Text>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Father's Name</Text>
-          <Text style={styles.infoValue}>{profile?.fatherName || 'Not specified'}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Native Place</Text>
-          <Text style={styles.infoValue}>{profile?.nativePlace || 'Not specified'}</Text>
-        </View>
-      </View>
-
       {/* Professional Card */}
       <View style={styles.card}>
         <Text style={styles.cardSectionTitle}>Professional Details</Text>

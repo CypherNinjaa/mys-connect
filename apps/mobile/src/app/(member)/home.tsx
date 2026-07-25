@@ -55,7 +55,7 @@ export default function HomeScreen() {
   }
 
   const profile = user?.profile;
-  const isProfileIncomplete = !profile?.nativePlace || !profile?.fatherName || !user?.phone;
+  const isProfileIncomplete = !profile?.occupation || !user?.phone;
 
   return (
     <ScrollView
@@ -96,7 +96,7 @@ export default function HomeScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.completeProfileTitle}>Complete Your Member Profile</Text>
             <Text style={styles.completeProfileSub}>
-              Tap to set your family native place & details in Profile.
+              Tap to set your occupation & contact details in Profile.
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.primary[500]} />
