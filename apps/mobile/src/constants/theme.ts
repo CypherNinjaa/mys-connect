@@ -3,16 +3,20 @@
  * Single import point for the entire design system
  */
 
+import { Platform } from 'react-native';
+
 export { Colors } from './Colors';
 export { Typography } from './Typography';
 export { Spacing } from './Spacing';
 
 /**
- * API Configuration
+ * API Configuration — Port 3004 backend
  */
+const DEV_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+
 export const API = {
   baseUrl: __DEV__
-    ? 'http://localhost:3001/api/v1'
+    ? `http://${DEV_HOST}:3004/api/v1`
     : 'https://api.mysranchi.org/api/v1',
   timeout: 15000, // 15 seconds
 } as const;

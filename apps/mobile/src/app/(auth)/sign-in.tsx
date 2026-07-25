@@ -9,11 +9,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
+  Image,
 } from 'react-native';
 import { useSignIn } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
-import { Colors, Spacing, Typography, APP } from '../../constants/theme';
+import { Colors, Spacing, APP } from '../../constants/theme';
 
 export default function SignInScreen() {
   const { signIn, setActive, isLoaded } = useSignIn();
@@ -26,31 +26,40 @@ export default function SignInScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSignIn = async () => {
-    if (!emailAddress.trim() || !password.trim()) {
+    const trimmedEmail = emailAddress.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
       setErrorMessage('Please enter both email address and password.');
       return;
     }
 
-    if (!isLoaded || !signIn) return;
+    if (!isLoaded || !signIn) {
+      setErrorMessage('Auth system initializing. Please try again in a moment.');
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMessage(null);
 
     try {
       const result = await signIn.create({
-        identifier: emailAddress.trim(),
-        password,
+        identifier: trimmedEmail,
+        password: trimmedPassword,
       });
 
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
-        router.replace('/');
+        router.replace('/(member)/home');
       } else {
-        setErrorMessage('Sign in incomplete. Please check your credentials.');
+        setErrorMessage('Sign in incomplete. Additional verification steps required.');
       }
     } catch (err: any) {
-      console.error('Sign in error:', err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || 'Invalid email or password.';
+      console.error('Sign in attempt failed:', err);
+      const msg =
+        err.errors?.[0]?.longMessage ||
+        err.errors?.[0]?.message ||
+        'Invalid email address or password. Please try again.';
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
@@ -63,17 +72,19 @@ export default function SignInScreen() {
       style={styles.flex}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header Branding */}
+        {/* Header Branding with MYS Logo */}
         <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>MYS</Text>
-          </View>
+          <Image
+            source={require('../../../assets/images/mys-logo.jpg')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>{APP.name}</Text>
           <Text style={styles.subtitle}>{APP.orgName}</Text>
-          <Text style={styles.tagline}>"Connecting Every Member, Digitally"</Text>
+          <Text style={styles.tagline}>"{APP.tagline}"</Text>
         </View>
 
-        {/* Form Container */}
+        {/* Form Card (Wireframe Layout) */}
         <View style={styles.formCard}>
           <Text style={styles.formTitle}>Member Sign In</Text>
 
@@ -88,7 +99,7 @@ export default function SignInScreen() {
             <Text style={styles.label}>Email Address</Text>
             <TextInput
               style={styles.input}
-              placeholder="Enter your email"
+              placeholder="name@domain.com"
               placeholderTextColor={Colors.neutral[400]}
               value={emailAddress}
               onChangeText={(val) => {
@@ -121,12 +132,12 @@ export default function SignInScreen() {
             />
           </View>
 
-          {/* Submit Button */}
+          {/* Sign In Action Button */}
           <TouchableOpacity
             style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
             onPress={handleSignIn}
             disabled={isSubmitting}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
             {isSubmitting ? (
               <ActivityIndicator color={Colors.neutral[0]} />
@@ -135,7 +146,7 @@ export default function SignInScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Footer Link */}
+          {/* Footer Navigation */}
           <View style={styles.footerRow}>
             <Text style={styles.footerText}>Don't have an account? </Text>
             <Link href="/(auth)/sign-up" asChild>
@@ -146,6 +157,7 @@ export default function SignInScreen() {
           </View>
         </View>
 
+        {/* Motto Footer */}
         <Text style={styles.mottoFooter}>{APP.mottoHindi}</Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -166,31 +178,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.xl,
   },
-  logoBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.primary[600],
+  logoImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     borderWidth: 2,
     borderColor: Colors.secondary[500],
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: Spacing.sm,
   },
-  logoBadgeText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.secondary[500],
-  },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: Colors.neutral[0],
+    letterSpacing: 0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.secondary[300],
     marginTop: 2,
+    fontWeight: '500',
   },
   tagline: {
     fontSize: 12,
@@ -202,11 +208,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral[0],
     borderRadius: Spacing.radiusLg,
     padding: Spacing.lg,
+    elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
   },
   formTitle: {
     fontSize: 18,
@@ -217,7 +223,7 @@ const styles = StyleSheet.create({
   errorBox: {
     backgroundColor: Colors.error.light,
     borderRadius: Spacing.radiusSm,
-    padding: Spacing.sm,
+    padding: Spacing.md,
     marginBottom: Spacing.md,
     borderLeftWidth: 4,
     borderLeftColor: Colors.error.main,
@@ -225,6 +231,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: Colors.error.dark,
     fontSize: 13,
+    lineHeight: 18,
   },
   inputGroup: {
     marginBottom: Spacing.md,
@@ -243,7 +250,7 @@ const styles = StyleSheet.create({
   },
   showHideText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.primary[500],
   },
   input: {
@@ -265,12 +272,12 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.65,
   },
   primaryButtonText: {
     color: Colors.neutral[0],
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   footerRow: {
     flexDirection: 'row',

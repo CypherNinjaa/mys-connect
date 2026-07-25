@@ -127,12 +127,25 @@ export class UserService {
       include: { city: true },
     });
 
-    // Update phone on User if provided
-    if (data.phone) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { phone: data.phone },
+    // Auto-verify user status to ACTIVE upon registration completion
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.phone ? { phone: data.phone } : {}),
+        status: UserStatus.ACTIVE,
+      },
+    });
+
+    // Update Clerk metadata for client role & status checks
+    try {
+      const { updateClerkUserMetadata } = require('../utils/clerk');
+      await updateClerkUserMetadata(user.clerkId, {
+        role: user.role || 'MEMBER',
+        status: UserStatus.ACTIVE,
+        approved: true,
       });
+    } catch (err) {
+      // Non-blocking metadata sync error
     }
 
     return {

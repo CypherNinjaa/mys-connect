@@ -1,75 +1,91 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
-import { useAuth } from '@clerk/expo';
+import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Colors, APP } from '../constants/theme';
 import { ApiService } from '../services/api';
 
 export default function IndexScreen() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { user: clerkUser } = useUser();
   const router = useRouter();
   const [loadingText, setLoadingText] = useState('Initializing MYS CONNECT...');
 
   useEffect(() => {
+    let isMounted = true;
+
     async function checkAuthAndRedirect() {
       if (!isLoaded) return;
 
       if (!isSignedIn) {
-        // Not signed in -> Navigate to Sign In
-        router.replace('/(auth)/sign-in');
+        if (isMounted) router.replace('/(auth)/sign-in');
         return;
       }
 
       try {
-        setLoadingText('Verifying profile status...');
-        const token = await getToken();
+        if (isMounted) setLoadingText('Verifying member status...');
+        const token = await getToken({ template: undefined });
 
         if (!token) {
-          router.replace('/(auth)/sign-in');
+          if (isMounted) router.replace('/(auth)/sign-in');
           return;
         }
 
-        const user = await ApiService.getMe(token);
-
-        if (!user) {
-          router.replace('/(auth)/complete-profile');
-          return;
+        // Try backend check with 5s timeout safety
+        let dbUser = null;
+        try {
+          dbUser = await Promise.race([
+            ApiService.getMe(token),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Network timeout')), 5000)),
+          ]);
+        } catch (netErr) {
+          console.warn('Backend API connection warning:', netErr);
         }
 
-        // Check DB Status
-        if (user.status === 'DEACTIVATED' || user.status === 'REJECTED') {
-          router.replace('/(auth)/deactivated');
-        } else if (!user.profile?.firstName) {
-          // Profile registration not completed yet
-          router.replace('/(auth)/complete-profile');
-        } else if (user.status === 'PENDING') {
-          // Awaiting admin approval
-          router.replace('/(auth)/pending-approval');
-        } else if (user.status === 'ACTIVE') {
-          // Active member -> Go to home
-          router.replace('/(member)/home');
+        if (!isMounted) return;
+
+        if (dbUser) {
+          if (dbUser.status === 'DEACTIVATED' || dbUser.status === 'REJECTED') {
+            router.replace('/(auth)/deactivated');
+          } else if (!dbUser.profile?.firstName) {
+            router.replace('/(auth)/complete-profile');
+          } else {
+            // Active or auto-verified member
+            router.replace('/(member)/home');
+          }
         } else {
-          router.replace('/(auth)/pending-approval');
+          // Fallback to Clerk metadata if backend unreachable
+          const metadata: any = clerkUser?.publicMetadata || {};
+          if (metadata.status === 'DEACTIVATED') {
+            router.replace('/(auth)/deactivated');
+          } else {
+            router.replace('/(member)/home');
+          }
         }
       } catch (error) {
-        console.error('Error fetching user profile:', error);
-        // On error fallback to sign in
-        router.replace('/(auth)/sign-in');
+        console.error('Auth guard error:', error);
+        if (isMounted) router.replace('/(member)/home');
       }
     }
 
     checkAuthAndRedirect();
+
+    return () => {
+      isMounted = false;
+    };
   }, [isLoaded, isSignedIn]);
 
   return (
     <View style={styles.container}>
       <View style={styles.logoContainer}>
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoText}>MYS</Text>
-        </View>
+        <Image
+          source={require('../../assets/images/mys-logo.jpg')}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>{APP.name}</Text>
         <Text style={styles.subtitle}>{APP.orgName}</Text>
-        <Text style={styles.motto}>{APP.mottoHindi}</Text>
+        <Text style={styles.motto}>"{APP.tagline}"</Text>
       </View>
 
       <View style={styles.loaderContainer}>
@@ -93,37 +109,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 80,
   },
-  logoCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: Colors.primary[600],
+  logoImage: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     borderWidth: 3,
     borderColor: Colors.secondary[500],
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 8,
-  },
-  logoText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: Colors.secondary[500],
-    letterSpacing: 1.5,
   },
   title: {
-    fontSize: 26,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: Colors.neutral[0],
     letterSpacing: 1,
   },
   subtitle: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     color: Colors.secondary[300],
     marginTop: 4,
   },
