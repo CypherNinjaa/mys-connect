@@ -11,12 +11,14 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { useSignIn } from '@clerk/expo';
+import { useAuth, useSignIn, useClerk } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { Colors, Spacing, APP } from '../../constants/theme';
 
 export default function SignInScreen() {
-  const { signIn, setActive, isLoaded } = useSignIn();
+  const { isLoaded } = useAuth();
+  const { setActive } = useClerk();
+  const { signIn, fetchStatus } = useSignIn();
   const router = useRouter();
 
   const [emailAddress, setEmailAddress] = useState('');
@@ -35,7 +37,7 @@ export default function SignInScreen() {
     }
 
     if (!isLoaded || !signIn) {
-      setErrorMessage('Auth system initializing. Please try again in a moment.');
+      setErrorMessage('Authentication service loading. Please try again.');
       return;
     }
 
@@ -43,28 +45,50 @@ export default function SignInScreen() {
     setErrorMessage(null);
 
     try {
-      const result = await signIn.create({
-        identifier: trimmedEmail,
+      // Execute password sign-in strategy
+      const response = await signIn.password({
+        emailAddress: trimmedEmail,
         password: trimmedPassword,
       });
 
-      if (result.status === 'complete') {
-        await setActive({ session: result.createdSessionId });
+      if (response?.error) {
+        const err = response.error as any;
+        const msg =
+          err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          err?.message ||
+          'Invalid email address or password. Please check your credentials.';
+        setErrorMessage(msg);
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (signIn.status === 'complete') {
+        if (signIn.createdSessionId && setActive) {
+          await setActive({ session: signIn.createdSessionId });
+        } else if (signIn.finalize) {
+          await signIn.finalize({
+            navigate: () => router.replace('/(member)/home'),
+          });
+        }
         router.replace('/(member)/home');
       } else {
-        setErrorMessage('Sign in incomplete. Additional verification steps required.');
+        setErrorMessage('Sign in requires additional verification steps.');
       }
     } catch (err: any) {
-      console.error('Sign in attempt failed:', err);
+      console.error('Sign in exception:', err);
       const msg =
-        err.errors?.[0]?.longMessage ||
-        err.errors?.[0]?.message ||
-        'Invalid email address or password. Please try again.';
+        err?.errors?.[0]?.longMessage ||
+        err?.errors?.[0]?.message ||
+        err?.message ||
+        'Network error or invalid credentials. Please try again.';
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const isLoading = isSubmitting || fetchStatus === 'fetching';
 
   return (
     <KeyboardAvoidingView
@@ -72,7 +96,7 @@ export default function SignInScreen() {
       style={styles.flex}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header Branding with MYS Logo */}
+        {/* Header Branding with Official MYS Logo */}
         <View style={styles.header}>
           <Image
             source={require('../../../assets/images/mys-logo.jpg')}
@@ -134,12 +158,12 @@ export default function SignInScreen() {
 
           {/* Sign In Action Button */}
           <TouchableOpacity
-            style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+            style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
             onPress={handleSignIn}
-            disabled={isSubmitting}
+            disabled={isLoading}
             activeOpacity={0.85}
           >
-            {isSubmitting ? (
+            {isLoading ? (
               <ActivityIndicator color={Colors.neutral[0]} />
             ) : (
               <Text style={styles.primaryButtonText}>Sign In</Text>
@@ -167,7 +191,7 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: Colors.primary[500],
+    backgroundColor: Colors.primary[500], // MYS Maroon #6B1D2A
   },
   scrollContent: {
     flexGrow: 1,
@@ -182,8 +206,8 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 45,
-    borderWidth: 2,
-    borderColor: Colors.secondary[500],
+    borderWidth: 2.5,
+    borderColor: Colors.secondary[500], // MYS Gold #D4A041
     marginBottom: Spacing.sm,
   },
   title: {

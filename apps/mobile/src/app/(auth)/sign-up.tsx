@@ -10,13 +10,16 @@ import {
   Platform,
   ScrollView,
   Modal,
+  Image,
 } from 'react-native';
-import { useSignUp } from '@clerk/expo';
+import { useAuth, useSignUp, useClerk } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { Colors, Spacing, APP } from '../../constants/theme';
 
 export default function SignUpScreen() {
-  const { signUp, isLoaded } = useSignUp();
+  const { isLoaded } = useAuth();
+  const { setActive } = useClerk();
+  const { signUp, fetchStatus } = useSignUp();
   const router = useRouter();
 
   const [emailAddress, setEmailAddress] = useState('');
@@ -28,33 +31,56 @@ export default function SignUpScreen() {
 
   // Handle initial sign up form submission
   const handleSignUp = async () => {
-    if (!emailAddress.trim() || !password.trim()) {
-      setErrorMessage('Please enter email address and password.');
+    const trimmedEmail = emailAddress.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      setErrorMessage('Please enter both email address and password.');
       return;
     }
 
-    if (password.length < 8) {
+    if (trimmedPassword.length < 8) {
       setErrorMessage('Password must be at least 8 characters long.');
       return;
     }
 
-    if (!isLoaded || !signUp) return;
+    if (!isLoaded || !signUp) {
+      setErrorMessage('Authentication service loading. Please try again.');
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMessage(null);
 
     try {
-      await signUp.create({
-        emailAddress: emailAddress.trim(),
-        password,
+      // Use signUp.password strategy for email & password
+      const response = await signUp.password({
+        emailAddress: trimmedEmail,
+        password: trimmedPassword,
       });
 
-      // Send verification code email
-      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      if (response?.error) {
+        const err = response.error as any;
+        const msg =
+          err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          err?.message ||
+          'Failed to create account.';
+        setErrorMessage(msg);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Send email code verification
+      await signUp.verifications.sendEmailCode();
       setVerifying(true);
     } catch (err: any) {
       console.error('Sign up error:', err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || 'Failed to create account.';
+      const msg =
+        err?.errors?.[0]?.longMessage ||
+        err?.errors?.[0]?.message ||
+        err?.message ||
+        'Failed to create account.';
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
@@ -63,7 +89,11 @@ export default function SignUpScreen() {
 
   // Handle OTP verification code submission
   const handleVerify = async () => {
-    if (!code.trim()) return;
+    const trimmedCode = code.trim();
+    if (!trimmedCode) {
+      setErrorMessage('Please enter the 6-digit verification code.');
+      return;
+    }
 
     if (!isLoaded || !signUp) return;
 
@@ -71,23 +101,49 @@ export default function SignUpScreen() {
     setErrorMessage(null);
 
     try {
-      const completeSignUp = await signUp.attemptEmailAddressVerification({
-        code: code.trim(),
+      const response = await signUp.verifications.verifyEmailCode({
+        code: trimmedCode,
       });
 
-      if (completeSignUp.status === 'complete') {
+      if (response?.error) {
+        const err = response.error as any;
+        const msg =
+          err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          err?.message ||
+          'Invalid verification code. Please check your email.';
+        setErrorMessage(msg);
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (signUp.status === 'complete') {
+        if (signUp.createdSessionId && setActive) {
+          await setActive({ session: signUp.createdSessionId });
+        } else if (signUp.finalize) {
+          await signUp.finalize({
+            navigate: () => router.replace('/(auth)/complete-profile'),
+          });
+        }
+        setVerifying(false);
         router.replace('/(auth)/complete-profile');
       } else {
-        setErrorMessage('Verification incomplete. Please verify your code.');
+        setErrorMessage('Verification incomplete. Please check code.');
       }
     } catch (err: any) {
       console.error('Verification error:', err);
-      const msg = err.errors?.[0]?.longMessage || err.errors?.[0]?.message || 'Invalid verification code.';
+      const msg =
+        err?.errors?.[0]?.longMessage ||
+        err?.errors?.[0]?.message ||
+        err?.message ||
+        'Invalid verification code.';
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const isLoading = isSubmitting || fetchStatus === 'fetching';
 
   return (
     <KeyboardAvoidingView
@@ -95,14 +151,19 @@ export default function SignUpScreen() {
       style={styles.flex}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header Branding */}
+        {/* Header Branding with MYS Logo */}
         <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>MYS</Text>
-          </View>
+          <Image
+            source={require('../../../assets/images/mys-logo.jpg')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>{APP.name}</Text>
           <Text style={styles.subtitle}>{APP.orgName}</Text>
         </View>
+
+        {/* Captcha Mount Point for Bot Protection */}
+        <View nativeID="clerk-captcha" />
 
         {/* Form Card */}
         <View style={styles.formCard}>
@@ -146,12 +207,12 @@ export default function SignUpScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+            style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
             onPress={handleSignUp}
-            disabled={isSubmitting}
-            activeOpacity={0.8}
+            disabled={isLoading}
+            activeOpacity={0.85}
           >
-            {isSubmitting ? (
+            {isLoading ? (
               <ActivityIndicator color={Colors.neutral[0]} />
             ) : (
               <Text style={styles.primaryButtonText}>Continue to Verification</Text>
@@ -194,11 +255,11 @@ export default function SignUpScreen() {
               />
 
               <TouchableOpacity
-                style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
+                style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
                 onPress={handleVerify}
-                disabled={isSubmitting}
+                disabled={isLoading}
               >
-                {isSubmitting ? (
+                {isLoading ? (
                   <ActivityIndicator color={Colors.neutral[0]} />
                 ) : (
                   <Text style={styles.primaryButtonText}>Verify & Continue</Text>
@@ -233,37 +294,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.xl,
   },
-  logoBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.primary[600],
-    borderWidth: 2,
+  logoImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2.5,
     borderColor: Colors.secondary[500],
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: Spacing.sm,
   },
-  logoBadgeText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: Colors.secondary[500],
-  },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: Colors.neutral[0],
+    letterSpacing: 0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: Colors.secondary[300],
     marginTop: 2,
+    fontWeight: '500',
   },
   formCard: {
     backgroundColor: Colors.neutral[0],
     borderRadius: Spacing.radiusLg,
     padding: Spacing.lg,
-    elevation: 5,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
   },
   formTitle: {
     fontSize: 18,
@@ -274,7 +333,7 @@ const styles = StyleSheet.create({
   errorBox: {
     backgroundColor: Colors.error.light,
     borderRadius: Spacing.radiusSm,
-    padding: Spacing.sm,
+    padding: Spacing.md,
     marginBottom: Spacing.md,
     borderLeftWidth: 4,
     borderLeftColor: Colors.error.main,
@@ -282,6 +341,7 @@ const styles = StyleSheet.create({
   errorText: {
     color: Colors.error.dark,
     fontSize: 13,
+    lineHeight: 18,
   },
   inputGroup: {
     marginBottom: Spacing.md,
@@ -311,12 +371,12 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.65,
   },
   primaryButtonText: {
     color: Colors.neutral[0],
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   footerRow: {
     flexDirection: 'row',
