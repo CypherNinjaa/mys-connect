@@ -5,7 +5,7 @@ import Constants from 'expo-constants';
  * Single Source of Truth for Mobile -> Backend Network Configuration
  */
 const getDevHostIp = (): string => {
-  // 1. Try Expo Metro Bundler host IP (e.g. 192.168.1.X)
+  // 1. Try to extract Metro Bundler Host IP (e.g. 192.168.1.6:8081)
   const hostUri =
     Constants.expoConfig?.hostUri ||
     (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
@@ -18,8 +18,8 @@ const getDevHostIp = (): string => {
     }
   }
 
-  // 2. Fallback for Android Emulator vs iOS Simulator vs Localhost
-  return Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+  // 2. Primary local network IP for physical devices (Realme RMX3785) & Wi-Fi
+  return '192.168.1.6';
 };
 
 const DEV_IP = getDevHostIp();
@@ -34,4 +34,4 @@ export const NETWORK_CONFIG = {
   timeoutMs: 10000, // 10s timeout
 } as const;
 
-console.log(`[NETWORK CONFIG] Base API URL set to: ${NETWORK_CONFIG.baseUrl}`);
+console.log(`[NETWORK CONFIG] Base API URL active: ${NETWORK_CONFIG.baseUrl}`);
