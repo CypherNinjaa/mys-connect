@@ -3,40 +3,18 @@
  * Single import point for the entire design system
  */
 
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { NETWORK_CONFIG } from '../config/network.config';
 
 export { Colors } from './Colors';
 export { Typography } from './Typography';
 export { Spacing } from './Spacing';
 
 /**
- * Dynamically resolves the development host IP address.
- * Uses Metro bundler IP (e.g. 192.168.x.x) so physical Android/iOS devices & emulators connect automatically.
- */
-const getDevHost = (): string => {
-  const debuggerHost =
-    Constants.expoConfig?.hostUri ||
-    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
-    (Constants as any).manifest?.debuggerHost;
-
-  if (debuggerHost) {
-    const ip = debuggerHost.split(':')[0];
-    if (ip) return ip;
-  }
-  return Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
-};
-
-const DEV_HOST = getDevHost();
-
-/**
- * API Configuration — Port 3004 backend
+ * API Configuration — Single Source from Network Config
  */
 export const API = {
-  baseUrl: __DEV__
-    ? `http://${DEV_HOST}:3004/api/v1`
-    : 'https://api.mysranchi.org/api/v1',
-  timeout: 15000, // 15 seconds
+  baseUrl: NETWORK_CONFIG.baseUrl,
+  timeout: NETWORK_CONFIG.timeoutMs,
 } as const;
 
 /**

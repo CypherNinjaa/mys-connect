@@ -6,10 +6,10 @@ import {
   StyleSheet,
   Image,
   Dimensions,
-  SafeAreaView,
   StatusBar,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Colors, APP } from '../constants/theme';

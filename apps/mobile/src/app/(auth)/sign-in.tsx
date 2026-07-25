@@ -10,10 +10,15 @@ import {
   Platform,
   ScrollView,
   Image,
+  Dimensions,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, useSignIn, useClerk } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
-import { Colors, Spacing, APP } from '../../constants/theme';
+import { Colors, Spacing } from '../../constants/theme';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function SignInScreen() {
   const { isLoaded } = useAuth();
@@ -21,23 +26,23 @@ export default function SignInScreen() {
   const { signIn, fetchStatus } = useSignIn();
   const router = useRouter();
 
-  const [emailAddress, setEmailAddress] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSignIn = async () => {
-    const trimmedEmail = emailAddress.trim();
+    const trimmedId = identifier.trim();
     const trimmedPassword = password.trim();
 
-    if (!trimmedEmail || !trimmedPassword) {
-      setErrorMessage('Please enter both email address and password.');
+    if (!trimmedId || !trimmedPassword) {
+      setErrorMessage('Please enter User ID / Email and password.');
       return;
     }
 
     if (!isLoaded || !signIn) {
-      setErrorMessage('Authentication service loading. Please try again.');
+      setErrorMessage('Authentication system initializing. Please try again.');
       return;
     }
 
@@ -45,9 +50,8 @@ export default function SignInScreen() {
     setErrorMessage(null);
 
     try {
-      // Execute password sign-in strategy
       const response = await signIn.password({
-        emailAddress: trimmedEmail,
+        emailAddress: trimmedId,
         password: trimmedPassword,
       });
 
@@ -57,7 +61,7 @@ export default function SignInScreen() {
           err?.errors?.[0]?.longMessage ||
           err?.errors?.[0]?.message ||
           err?.message ||
-          'Invalid email address or password. Please check your credentials.';
+          'Invalid credentials. Please check your User ID / Password.';
         setErrorMessage(msg);
         setIsSubmitting(false);
         return;
@@ -81,174 +85,205 @@ export default function SignInScreen() {
         err?.errors?.[0]?.longMessage ||
         err?.errors?.[0]?.message ||
         err?.message ||
-        'Network error or invalid credentials. Please try again.';
+        'Invalid User ID or Password. Please try again.';
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleGuestMode = () => {
+    // Navigate directly to Member Home as Guest
+    router.replace('/(member)/home');
+  };
+
   const isLoading = isSubmitting || fetchStatus === 'fetching';
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.flex}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header Branding with Official MYS Logo */}
-        <View style={styles.header}>
-          <Image
-            source={require('../../../assets/images/mys-logo.jpg')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-          <Text style={styles.title}>{APP.name}</Text>
-          <Text style={styles.subtitle}>{APP.orgName}</Text>
-          <Text style={styles.tagline}>"{APP.tagline}"</Text>
-        </View>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FAF6F0" />
 
-        {/* Form Card (Wireframe Layout) */}
-        <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Member Sign In</Text>
-
-          {errorMessage && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            </View>
-          )}
-
-          {/* Email Field */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email Address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="name@domain.com"
-              placeholderTextColor={Colors.neutral[400]}
-              value={emailAddress}
-              onChangeText={(val) => {
-                setEmailAddress(val);
-                if (errorMessage) setErrorMessage(null);
-              }}
-              autoCapitalize="none"
-              keyboardType="email-address"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header Section: MYS Logo & Welcome Text */}
+          <View style={styles.header}>
+            <Image
+              source={require('../../../assets/images/mys-logo.jpg')}
+              style={styles.logoImage}
+              resizeMode="contain"
             />
+            <Text style={styles.welcomeTitle}>Welcome Back!</Text>
+            <Text style={styles.welcomeSubtitle}>Please login to continue</Text>
           </View>
 
-          {/* Password Field */}
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Password</Text>
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Text style={styles.showHideText}>{showPassword ? 'Hide' : 'Show'}</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password"
-              placeholderTextColor={Colors.neutral[400]}
-              value={password}
-              onChangeText={(val) => {
-                setPassword(val);
-                if (errorMessage) setErrorMessage(null);
-              }}
-              secureTextEntry={!showPassword}
-            />
-          </View>
-
-          {/* Sign In Action Button */}
-          <TouchableOpacity
-            style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
-            onPress={handleSignIn}
-            disabled={isLoading}
-            activeOpacity={0.85}
-          >
-            {isLoading ? (
-              <ActivityIndicator color={Colors.neutral[0]} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Sign In</Text>
+          {/* Login Form Container */}
+          <View style={styles.formContainer}>
+            {errorMessage && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
             )}
-          </TouchableOpacity>
 
-          {/* Footer Navigation */}
-          <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            <Link href="/(auth)/sign-up" asChild>
-              <TouchableOpacity>
-                <Text style={styles.linkText}>Register Here</Text>
+            {/* Input 1: User ID / Mobile Number */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputIcon}>👤</Text>
+              <TextInput
+                style={styles.inputField}
+                placeholder="User ID / Mobile Number / Email"
+                placeholderTextColor="#A0AEC0"
+                value={identifier}
+                onChangeText={(val) => {
+                  setIdentifier(val);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
+
+            {/* Input 2: Password */}
+            <View style={styles.inputCard}>
+              <Text style={styles.inputIcon}>🔒</Text>
+              <TextInput
+                style={styles.inputField}
+                placeholder="Password"
+                placeholderTextColor="#A0AEC0"
+                value={password}
+                onChangeText={(val) => {
+                  setPassword(val);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeButton}
+              >
+                <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
               </TouchableOpacity>
-            </Link>
-          </View>
-        </View>
+            </View>
 
-        {/* Motto Footer */}
-        <Text style={styles.mottoFooter}>{APP.mottoHindi}</Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            {/* Forgot Password Link */}
+            <TouchableOpacity style={styles.forgotPasswordRow}>
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+
+            {/* Main LOGIN Button */}
+            <TouchableOpacity
+              style={[styles.loginButton, isLoading && styles.buttonDisabled]}
+              onPress={handleSignIn}
+              disabled={isLoading}
+              activeOpacity={0.85}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.loginButtonText}>LOGIN</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* OR Divider */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Continue as Guest Button */}
+            <TouchableOpacity
+              style={styles.guestButton}
+              onPress={handleGuestMode}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.guestIcon}>👤</Text>
+              <Text style={styles.guestButtonText}>Continue as Guest</Text>
+            </TouchableOpacity>
+
+            {/* Registration Navigation */}
+            <View style={styles.registerRow}>
+              <Text style={styles.registerPrompt}>Don't have an account? </Text>
+              <Link href="/(auth)/sign-up" asChild>
+                <TouchableOpacity>
+                  <Text style={styles.registerLink}>Register Now</Text>
+                </TouchableOpacity>
+              </Link>
+            </View>
+          </View>
+
+          {/* Spacer for bottom artwork */}
+          <View style={{ height: 160 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Background Architectural Mahal Artwork */}
+      <View style={styles.mahalWrapper} pointerEvents="none">
+        <Image
+          source={require('../../../assets/images/mahal-bg.png')}
+          style={styles.mahalImage}
+          resizeMode="cover"
+        />
+      </View>
+
+      {/* Bottom Royal Gold/Maroon Wave Banner */}
+      <View style={styles.bottomWaveContainer} pointerEvents="none">
+        <View style={styles.goldLine} />
+        <View style={styles.maroonWave} />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF6F0', // Warm cream background matching wireframe
+  },
   flex: {
     flex: 1,
-    backgroundColor: Colors.primary[500], // MYS Maroon #6B1D2A
   },
   scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: Spacing.md,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    zIndex: 10,
   },
   header: {
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: 28,
   },
   logoImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    borderWidth: 2.5,
-    borderColor: Colors.secondary[500], // MYS Gold #D4A041
-    marginBottom: Spacing.sm,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    marginBottom: 16,
   },
-  title: {
-    fontSize: 26,
+  welcomeTitle: {
+    fontSize: 28,
     fontWeight: '800',
-    color: Colors.neutral[0],
-    letterSpacing: 0.5,
+    color: '#1A202C',
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
-  subtitle: {
+  welcomeSubtitle: {
     fontSize: 14,
-    color: Colors.secondary[300],
-    marginTop: 2,
-    fontWeight: '500',
+    color: '#718096',
+    marginTop: 4,
+    textAlign: 'center',
   },
-  tagline: {
-    fontSize: 12,
-    color: Colors.primary[100],
-    marginTop: 6,
-    fontStyle: 'italic',
-  },
-  formCard: {
-    backgroundColor: Colors.neutral[0],
-    borderRadius: Spacing.radiusLg,
-    padding: Spacing.lg,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-  },
-  formTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.text.primary,
-    marginBottom: Spacing.md,
+  formContainer: {
+    width: '100%',
   },
   errorBox: {
     backgroundColor: Colors.error.light,
-    borderRadius: Spacing.radiusSm,
+    borderRadius: 12,
     padding: Spacing.md,
-    marginBottom: Spacing.md,
+    marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: Colors.error.main,
   },
@@ -257,72 +292,153 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  inputGroup: {
-    marginBottom: Spacing.md,
-  },
-  labelRow: {
+  inputCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 16,
+    height: 52,
+    marginBottom: 16,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  label: {
+  inputIcon: {
+    fontSize: 18,
+    marginRight: 12,
+    opacity: 0.7,
+  },
+  inputField: {
+    flex: 1,
+    fontSize: 15,
+    color: '#2D3748',
+    height: '100%',
+  },
+  eyeButton: {
+    padding: 6,
+  },
+  eyeIcon: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  forgotPasswordRow: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
+  },
+  forgotPasswordText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.text.secondary,
-    marginBottom: 6,
+    color: '#2B6CB0',
   },
-  showHideText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.primary[500],
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    borderRadius: Spacing.radiusMd,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: Colors.text.primary,
-    backgroundColor: Colors.neutral[50],
-  },
-  primaryButton: {
-    backgroundColor: Colors.primary[500],
-    borderRadius: Spacing.radiusMd,
-    paddingVertical: 14,
+  loginButton: {
+    backgroundColor: Colors.primary[500], // Royal Maroon #6B1D2A
+    height: 52,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: Spacing.sm,
+    elevation: 3,
+    shadowColor: Colors.primary[500],
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
   },
   buttonDisabled: {
     opacity: 0.65,
   },
-  primaryButtonText: {
-    color: Colors.neutral[0],
+  loginButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 1,
   },
-  footerRow: {
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#CBD5E0',
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#718096',
+  },
+  guestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: Colors.primary[500],
+    height: 52,
+    borderRadius: 12,
+  },
+  guestIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  guestButtonText: {
+    color: Colors.primary[500],
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  registerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: Spacing.lg,
+    marginTop: 24,
   },
-  footerText: {
-    color: Colors.text.secondary,
-    fontSize: 13,
+  registerPrompt: {
+    fontSize: 14,
+    color: '#718096',
   },
-  linkText: {
-    color: Colors.primary[500],
+  registerLink: {
+    fontSize: 14,
     fontWeight: '700',
-    fontSize: 13,
+    color: '#2B6CB0',
   },
-  mottoFooter: {
-    textAlign: 'center',
-    color: Colors.primary[200],
-    fontSize: 12,
-    marginTop: Spacing.xl,
-    fontStyle: 'italic',
+  mahalWrapper: {
+    position: 'absolute',
+    bottom: 50,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.32,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    opacity: 0.55,
+    zIndex: 1,
+  },
+  mahalImage: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+  },
+  bottomWaveContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 70,
+    zIndex: 5,
+  },
+  goldLine: {
+    height: 4,
+    backgroundColor: Colors.secondary[500], // MYS Gold #D4A041
+    borderTopLeftRadius: 50,
+    borderTopRightRadius: 50,
+  },
+  maroonWave: {
+    flex: 1,
+    backgroundColor: Colors.primary[500], // Royal Maroon #6B1D2A
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
 });
