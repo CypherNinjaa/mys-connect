@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { getAuth } from '@clerk/express';
 import { AppError } from './errorHandler';
-import { logger } from '../utils/logger';
 
 /**
  * Middleware to verify Clerk authentication.

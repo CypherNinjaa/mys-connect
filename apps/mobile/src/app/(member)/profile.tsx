@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -9,8 +10,26 @@ import {
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
-import { Colors, Spacing, APP } from '../../constants/theme';
-import { ApiService } from '../../services/api';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors, Spacing } from '../../constants/theme';
+import { ApiService, RegisterProfileData } from '../../services/api';
+
+const BLOOD_GROUPS = [
+  { label: 'A+', value: 'A_POSITIVE' },
+  { label: 'A-', value: 'A_NEGATIVE' },
+  { label: 'B+', value: 'B_POSITIVE' },
+  { label: 'B-', value: 'B_NEGATIVE' },
+  { label: 'AB+', value: 'AB_POSITIVE' },
+  { label: 'AB-', value: 'AB_NEGATIVE' },
+  { label: 'O+', value: 'O_POSITIVE' },
+  { label: 'O-', value: 'O_NEGATIVE' },
+];
+
+const GENDERS = [
+  { label: 'Male', value: 'MALE' },
+  { label: 'Female', value: 'FEMALE' },
+  { label: 'Other', value: 'OTHER' },
+];
 
 export default function ProfileScreen() {
   const { getToken, isSignedIn, signOut } = useAuth();
@@ -18,25 +37,86 @@ export default function ProfileScreen() {
 
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        if (isSignedIn) {
-          const token = await getToken();
-          if (token) {
-            const data = await ApiService.getMe(token);
-            setUser(data);
+  // Edit Form Fields
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState<'MALE' | 'FEMALE' | 'OTHER'>('MALE');
+  const [bloodGroup, setBloodGroup] = useState<any>('O_POSITIVE');
+  const [address, setAddress] = useState('');
+  const [occupation, setOccupation] = useState('');
+  const [organization, setOrganization] = useState('');
+
+  const loadProfile = async () => {
+    try {
+      if (isSignedIn) {
+        const token = await getToken();
+        if (token) {
+          const data = await ApiService.getMe(token);
+          setUser(data);
+          if (data?.profile) {
+            setFirstName(data.profile.firstName || '');
+            setLastName(data.profile.lastName || '');
+            setPhone(data.phone || data.profile.phone || '');
+            if (data.profile.gender) setGender(data.profile.gender);
+            if (data.profile.bloodGroup) setBloodGroup(data.profile.bloodGroup);
+            setAddress(data.profile.address || '');
+            setOccupation(data.profile.occupation || '');
+            setOrganization(data.profile.organization || '');
           }
         }
-      } catch (err) {
-        // Quietly swallow for guest mode / unauthenticated session
-      } finally {
-        setLoading(false);
       }
+    } catch (err) {
+      // Quietly swallow for guest mode
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadProfile();
   }, [isSignedIn]);
+
+  const handleSaveProfile = async () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      setErrorMessage('First Name and Last Name are required.');
+      return;
+    }
+
+    setIsSaving(true);
+    setErrorMessage(null);
+
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in required.');
+
+      const payload: RegisterProfileData = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim() || undefined,
+        gender,
+        bloodGroup,
+        address: address.trim() || undefined,
+        occupation: occupation.trim() || undefined,
+        organization: organization.trim() || undefined,
+      };
+
+      const result = await ApiService.registerProfile(token, payload);
+      if (result) {
+        setUser(result.user || result);
+      }
+      setIsEditing(false);
+      await loadProfile();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to update profile.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -71,57 +151,181 @@ export default function ProfileScreen() {
         <View style={styles.statusBadge}>
           <Text style={styles.statusBadgeText}>{user?.status || 'ACTIVE'}</Text>
         </View>
+
+        {/* Edit Profile Toggle Button */}
+        <TouchableOpacity
+          style={styles.editToggleBtn}
+          onPress={() => setIsEditing(!isEditing)}
+        >
+          <Ionicons
+            name={isEditing ? 'close-outline' : 'create-outline'}
+            size={18}
+            color={Colors.secondary[500]}
+          />
+          <Text style={styles.editToggleBtnText}>
+            {isEditing ? 'Cancel Edit' : 'Edit Profile'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Details Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardSectionTitle}>Personal & Contact Details</Text>
+      {/* Editing Form inside Profile Tab */}
+      {isEditing ? (
+        <View style={styles.card}>
+          <Text style={styles.cardSectionTitle}>Edit Member Profile</Text>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Phone Number</Text>
-          <Text style={styles.infoValue}>{user?.phone || 'Not provided'}</Text>
+          {errorMessage && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          )}
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>First Name *</Text>
+            <TextInput
+              style={styles.input}
+              value={firstName}
+              onChangeText={setFirstName}
+              placeholder="First Name"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Last Name *</Text>
+            <TextInput
+              style={styles.input}
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder="Last Name"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Phone Number</Text>
+            <TextInput
+              style={styles.input}
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="Phone Number"
+              keyboardType="phone-pad"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Gender</Text>
+            <View style={styles.chipRow}>
+              {GENDERS.map((g) => (
+                <TouchableOpacity
+                  key={g.value}
+                  style={[styles.chip, gender === g.value && styles.chipActive]}
+                  onPress={() => setGender(g.value as any)}
+                >
+                  <Text style={[styles.chipText, gender === g.value && styles.chipTextActive]}>
+                    {g.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Blood Group</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {BLOOD_GROUPS.map((bg) => (
+                <TouchableOpacity
+                  key={bg.value}
+                  style={[styles.chip, bloodGroup === bg.value && styles.chipActive]}
+                  onPress={() => setBloodGroup(bg.value as any)}
+                >
+                  <Text style={[styles.chipText, bloodGroup === bg.value && styles.chipTextActive]}>
+                    {bg.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Occupation / Field</Text>
+            <TextInput
+              style={styles.input}
+              value={occupation}
+              onChangeText={setOccupation}
+              placeholder="e.g. Software Engineer, Business"
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Organization Name</Text>
+            <TextInput
+              style={styles.input}
+              value={organization}
+              onChangeText={setOrganization}
+              placeholder="Company or Firm Name"
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.saveBtn, isSaving && styles.btnDisabled]}
+            onPress={handleSaveProfile}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveBtnText}>Save Profile Details</Text>
+            )}
+          </TouchableOpacity>
         </View>
+      ) : (
+        <>
+          {/* Details Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardSectionTitle}>Personal & Contact Details</Text>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Gender</Text>
-          <Text style={styles.infoValue}>{profile?.gender || 'N/A'}</Text>
-        </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Phone Number</Text>
+              <Text style={styles.infoValue}>{user?.phone || 'Not provided'}</Text>
+            </View>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Blood Group</Text>
-          <Text style={styles.infoValue}>{profile?.bloodGroup ? profile.bloodGroup.replace('_', ' ') : 'N/A'}</Text>
-        </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Gender</Text>
+              <Text style={styles.infoValue}>{profile?.gender || 'N/A'}</Text>
+            </View>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>City Chapter</Text>
-          <Text style={styles.infoValue}>{profile?.city?.name || 'Ranchi'}</Text>
-        </View>
-      </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Blood Group</Text>
+              <Text style={styles.infoValue}>
+                {profile?.bloodGroup ? profile.bloodGroup.replace('_', ' ') : 'N/A'}
+              </Text>
+            </View>
 
-      {/* Professional Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardSectionTitle}>Professional Details</Text>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>City Chapter</Text>
+              <Text style={styles.infoValue}>{profile?.city?.name || 'Ranchi'}</Text>
+            </View>
+          </View>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Occupation</Text>
-          <Text style={styles.infoValue}>{profile?.occupation || 'Not specified'}</Text>
-        </View>
+          {/* Professional Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardSectionTitle}>Professional Details</Text>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Organization</Text>
-          <Text style={styles.infoValue}>{profile?.organization || 'Not specified'}</Text>
-        </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Occupation</Text>
+              <Text style={styles.infoValue}>{profile?.occupation || 'Not specified'}</Text>
+            </View>
 
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Designation</Text>
-          <Text style={styles.infoValue}>{profile?.designation || 'Not specified'}</Text>
-        </View>
-      </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Organization</Text>
+              <Text style={styles.infoValue}>{profile?.organization || 'Not specified'}</Text>
+            </View>
+          </View>
 
-      {/* Sign Out Button */}
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutButtonText}>Sign Out Account</Text>
-      </TouchableOpacity>
+          {/* Sign Out Button */}
+          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+            <Text style={styles.signOutButtonText}>Sign Out Account</Text>
+          </TouchableOpacity>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -185,6 +389,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
+  editToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.secondary[500],
+  },
+  editToggleBtnText: {
+    color: Colors.secondary[500],
+    fontWeight: '700',
+    fontSize: 13,
+  },
   card: {
     backgroundColor: Colors.neutral[0],
     borderRadius: Spacing.radiusMd,
@@ -200,6 +421,75 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border.light,
     paddingBottom: 6,
+  },
+  errorBox: {
+    backgroundColor: Colors.error.light,
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  errorText: {
+    color: Colors.error.dark,
+    fontSize: 13,
+  },
+  inputGroup: {
+    marginBottom: 14,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.text.secondary,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.text.primary,
+    backgroundColor: Colors.neutral[50],
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.neutral[100],
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    marginRight: 6,
+  },
+  chipActive: {
+    backgroundColor: Colors.primary[500],
+    borderColor: Colors.primary[500],
+  },
+  chipText: {
+    fontSize: 13,
+    color: Colors.text.secondary,
+  },
+  chipTextActive: {
+    color: Colors.neutral[0],
+    fontWeight: '700',
+  },
+  saveBtn: {
+    backgroundColor: Colors.primary[500],
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  btnDisabled: {
+    opacity: 0.65,
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 15,
   },
   infoRow: {
     flexDirection: 'row',
