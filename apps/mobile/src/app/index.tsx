@@ -64,8 +64,6 @@ export default function SplashScreen() {
         if (dbUser) {
           if (dbUser.status === 'DEACTIVATED' || dbUser.status === 'REJECTED') {
             router.replace('/(auth)/deactivated');
-          } else if (!dbUser.profile?.firstName) {
-            router.replace('/(auth)/complete-profile');
           } else {
             router.replace('/(member)/home');
           }
