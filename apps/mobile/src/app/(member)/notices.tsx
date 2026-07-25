@@ -1,13 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 
 export default function NoticesPlaceholder() {
   return (
     <View style={styles.container}>
-      <Text style={styles.icon}>📢</Text>
+      <Ionicons name="notifications-outline" size={48} color={Colors.primary[500]} style={styles.icon} />
       <Text style={styles.title}>Notice Board</Text>
-      <Text style={styles.subtitle}>Coming in Milestone 2.2 — Official Announcements & Circulars</Text>
+      <Text style={styles.subtitle}>Official Announcements & Circulars</Text>
     </View>
   );
 }
@@ -21,7 +22,6 @@ const styles = StyleSheet.create({
     padding: Spacing.xl,
   },
   icon: {
-    fontSize: 48,
     marginBottom: 12,
   },
   title: {

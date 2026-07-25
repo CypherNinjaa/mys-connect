@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
 import { ApiService } from '../../services/api';
 
@@ -51,7 +52,7 @@ export default function PendingApprovalScreen() {
     <View style={styles.container}>
       <View style={styles.contentCard}>
         <View style={styles.iconContainer}>
-          <Text style={styles.iconText}>⏳</Text>
+          <Ionicons name="hourglass-outline" size={40} color={Colors.warning.dark} />
         </View>
 
         <Text style={styles.title}>Registration Submitted</Text>
@@ -114,9 +115,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.md,
-  },
-  iconText: {
-    fontSize: 36,
   },
   title: {
     fontSize: 22,

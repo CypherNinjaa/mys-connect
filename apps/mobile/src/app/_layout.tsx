@@ -10,7 +10,7 @@ const publishableKey =
   'pk_test_Z2VudGxlLWFtb2ViYS00LmNsZXJrLmFjY291bnRzLmRldiQ';
 
 if (!publishableKey) {
-  console.warn('⚠️ Missing Clerk Publishable Key in environment variables.');
+  console.warn('Missing Clerk Publishable Key in environment variables.');
 }
 
 export default function RootLayout() {

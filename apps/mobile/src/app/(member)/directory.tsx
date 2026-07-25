@@ -1,13 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 
 export default function DirectoryPlaceholder() {
   return (
     <View style={styles.container}>
-      <Text style={styles.icon}>👥</Text>
+      <Ionicons name="people-outline" size={48} color={Colors.primary[500]} style={styles.icon} />
       <Text style={styles.title}>Member Directory</Text>
-      <Text style={styles.subtitle}>Coming in Milestone 1.3 — Search & Connect with MYS Members</Text>
+      <Text style={styles.subtitle}>Search & Connect with MYS Members</Text>
     </View>
   );
 }
@@ -21,7 +22,6 @@ const styles = StyleSheet.create({
     padding: Spacing.xl,
   },
   icon: {
-    fontSize: 48,
     marginBottom: 12,
   },
   title: {

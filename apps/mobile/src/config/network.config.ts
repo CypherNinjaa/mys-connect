@@ -34,4 +34,4 @@ export const NETWORK_CONFIG = {
   timeoutMs: 10000, // 10s timeout
 } as const;
 
-console.log(`🌐 [NETWORK CONFIG] Base API URL set to: ${NETWORK_CONFIG.baseUrl}`);
+console.log(`[NETWORK CONFIG] Base API URL set to: ${NETWORK_CONFIG.baseUrl}`);

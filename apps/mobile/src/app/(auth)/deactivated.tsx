@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
 
 export default function DeactivatedScreen() {
@@ -17,7 +18,7 @@ export default function DeactivatedScreen() {
     <View style={styles.container}>
       <View style={styles.contentCard}>
         <View style={styles.iconContainer}>
-          <Text style={styles.iconText}>🚫</Text>
+          <Ionicons name="ban-outline" size={40} color={Colors.error.main} />
         </View>
 
         <Text style={styles.title}>Account Inactive</Text>
@@ -61,9 +62,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.md,
-  },
-  iconText: {
-    fontSize: 36,
   },
   title: {
     fontSize: 22,

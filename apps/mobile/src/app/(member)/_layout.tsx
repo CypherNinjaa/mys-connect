@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../../constants/theme';
-import { Text } from 'react-native';
 
 export default function MemberLayout() {
   return (
@@ -29,7 +29,7 @@ export default function MemberLayout() {
         options={{
           title: 'MYS Home',
           tabBarLabel: 'Home',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>🏠</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -37,7 +37,7 @@ export default function MemberLayout() {
         options={{
           title: 'Member Directory',
           tabBarLabel: 'Directory',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>👥</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="people-outline" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -45,7 +45,7 @@ export default function MemberLayout() {
         options={{
           title: 'Community Events',
           tabBarLabel: 'Events',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>📅</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -53,7 +53,7 @@ export default function MemberLayout() {
         options={{
           title: 'Notice Board',
           tabBarLabel: 'Notices',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>📢</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="notifications-outline" size={22} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -61,7 +61,7 @@ export default function MemberLayout() {
         options={{
           title: 'My Profile',
           tabBarLabel: 'Profile',
-          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>👤</Text>,
+          tabBarIcon: ({ color }) => <Ionicons name="person-outline" size={22} color={color} />,
         }}
       />
     </Tabs>

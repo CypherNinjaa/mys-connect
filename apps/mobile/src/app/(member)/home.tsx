@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
 import { ApiService } from '../../services/api';
 
@@ -63,14 +64,17 @@ export default function HomeScreen() {
     >
       {/* User Welcome Banner */}
       <View style={styles.welcomeBanner}>
-        <View>
-          <Text style={styles.welcomeText}>Jai Shree Krishna 🙏</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.welcomeText}>Jai Shree Krishna</Text>
           <Text style={styles.userNameText}>
             {profile?.firstName ? `${profile.firstName} ${profile.lastName}` : 'MYS Member'}
           </Text>
-          <Text style={styles.userCityText}>
-            📍 {profile?.city?.name || 'Ranchi'}, Jharkhand
-          </Text>
+          <View style={styles.cityRow}>
+            <Ionicons name="location-outline" size={14} color={Colors.primary[100]} />
+            <Text style={styles.userCityText}>
+              {profile?.city?.name || 'Ranchi'}, Jharkhand
+            </Text>
+          </View>
         </View>
 
         <View style={styles.roleBadge}>
@@ -85,7 +89,7 @@ export default function HomeScreen() {
           style={styles.gridCard}
           onPress={() => router.push('/(member)/directory')}
         >
-          <Text style={styles.cardIcon}>👥</Text>
+          <Ionicons name="people-outline" size={28} color={Colors.primary[500]} style={styles.cardIcon} />
           <Text style={styles.cardTitle}>Member Directory</Text>
           <Text style={styles.cardSub}>Search & Connect</Text>
         </TouchableOpacity>
@@ -94,7 +98,7 @@ export default function HomeScreen() {
           style={styles.gridCard}
           onPress={() => router.push('/(member)/events')}
         >
-          <Text style={styles.cardIcon}>📅</Text>
+          <Ionicons name="calendar-outline" size={28} color={Colors.primary[500]} style={styles.cardIcon} />
           <Text style={styles.cardTitle}>Events & Meetups</Text>
           <Text style={styles.cardSub}>Upcoming & RSVP</Text>
         </TouchableOpacity>
@@ -103,7 +107,7 @@ export default function HomeScreen() {
           style={styles.gridCard}
           onPress={() => router.push('/(member)/notices')}
         >
-          <Text style={styles.cardIcon}>📢</Text>
+          <Ionicons name="megaphone-outline" size={28} color={Colors.primary[500]} style={styles.cardIcon} />
           <Text style={styles.cardTitle}>Notice Board</Text>
           <Text style={styles.cardSub}>Official Circulars</Text>
         </TouchableOpacity>
@@ -112,7 +116,7 @@ export default function HomeScreen() {
           style={styles.gridCard}
           onPress={() => router.push('/(member)/profile')}
         >
-          <Text style={styles.cardIcon}>👤</Text>
+          <Ionicons name="person-outline" size={28} color={Colors.primary[500]} style={styles.cardIcon} />
           <Text style={styles.cardTitle}>My Account</Text>
           <Text style={styles.cardSub}>View Profile & Gotra</Text>
         </TouchableOpacity>
@@ -121,7 +125,7 @@ export default function HomeScreen() {
       {/* Announcement Banner */}
       <View style={styles.noticeBanner}>
         <View style={styles.noticeHeader}>
-          <Text style={styles.noticeIcon}>💡</Text>
+          <Ionicons name="information-circle-outline" size={20} color={Colors.secondary[600]} />
           <Text style={styles.noticeTitle}>Welcome to MYS CONNECT</Text>
         </View>
         <Text style={styles.noticeBody}>
@@ -171,10 +175,15 @@ const styles = StyleSheet.create({
     color: Colors.neutral[0],
     marginTop: 2,
   },
+  cityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
   userCityText: {
     fontSize: 13,
     color: Colors.primary[100],
-    marginTop: 4,
   },
   roleBadge: {
     backgroundColor: Colors.secondary[500],
@@ -209,7 +218,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.light,
   },
   cardIcon: {
-    fontSize: 28,
     marginBottom: 8,
   },
   cardTitle: {
@@ -236,9 +244,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 6,
-  },
-  noticeIcon: {
-    fontSize: 18,
   },
   noticeTitle: {
     fontSize: 15,

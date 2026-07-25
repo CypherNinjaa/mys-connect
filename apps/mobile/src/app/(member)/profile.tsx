@@ -67,7 +67,7 @@ export default function ProfileScreen() {
         <Text style={styles.emailText}>{user?.email}</Text>
 
         <View style={styles.statusBadge}>
-          <Text style={styles.statusBadgeText}>✅ {user?.status || 'ACTIVE'}</Text>
+          <Text style={styles.statusBadgeText}>{user?.status || 'ACTIVE'}</Text>
         </View>
       </View>
 

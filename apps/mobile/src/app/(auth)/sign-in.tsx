@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, useSignIn, useClerk } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -93,7 +94,6 @@ export default function SignInScreen() {
   };
 
   const handleGuestMode = () => {
-    // Navigate directly to Member Home as Guest
     router.replace('/(member)/home');
   };
 
@@ -133,7 +133,7 @@ export default function SignInScreen() {
 
             {/* Input 1: User ID / Mobile Number */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputIcon}>👤</Text>
+              <Ionicons name="person-outline" size={20} color="#718096" style={styles.inputIcon} />
               <TextInput
                 style={styles.inputField}
                 placeholder="User ID / Mobile Number / Email"
@@ -150,7 +150,7 @@ export default function SignInScreen() {
 
             {/* Input 2: Password */}
             <View style={styles.inputCard}>
-              <Text style={styles.inputIcon}>🔒</Text>
+              <Ionicons name="lock-closed-outline" size={20} color="#718096" style={styles.inputIcon} />
               <TextInput
                 style={styles.inputField}
                 placeholder="Password"
@@ -166,7 +166,11 @@ export default function SignInScreen() {
                 onPress={() => setShowPassword(!showPassword)}
                 style={styles.eyeButton}
               >
-                <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color="#718096"
+                />
               </TouchableOpacity>
             </View>
 
@@ -202,7 +206,7 @@ export default function SignInScreen() {
               onPress={handleGuestMode}
               activeOpacity={0.85}
             >
-              <Text style={styles.guestIcon}>👤</Text>
+              <Ionicons name="person-circle-outline" size={22} color={Colors.primary[500]} style={{ marginRight: 8 }} />
               <Text style={styles.guestButtonText}>Continue as Guest</Text>
             </TouchableOpacity>
 
@@ -243,7 +247,7 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF6F0', // Warm cream background matching wireframe
+    backgroundColor: '#FAF6F0',
   },
   flex: {
     flex: 1,
@@ -309,9 +313,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   inputIcon: {
-    fontSize: 18,
     marginRight: 12,
-    opacity: 0.7,
   },
   inputField: {
     flex: 1,
@@ -321,10 +323,6 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     padding: 6,
-  },
-  eyeIcon: {
-    fontSize: 16,
-    opacity: 0.7,
   },
   forgotPasswordRow: {
     alignSelf: 'flex-end',
@@ -336,7 +334,7 @@ const styles = StyleSheet.create({
     color: '#2B6CB0',
   },
   loginButton: {
-    backgroundColor: Colors.primary[500], // Royal Maroon #6B1D2A
+    backgroundColor: Colors.primary[500],
     height: 52,
     borderRadius: 12,
     alignItems: 'center',
@@ -381,10 +379,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary[500],
     height: 52,
     borderRadius: 12,
-  },
-  guestIcon: {
-    fontSize: 18,
-    marginRight: 8,
   },
   guestButtonText: {
     color: Colors.primary[500],
@@ -431,13 +425,13 @@ const styles = StyleSheet.create({
   },
   goldLine: {
     height: 4,
-    backgroundColor: Colors.secondary[500], // MYS Gold #D4A041
+    backgroundColor: Colors.secondary[500],
     borderTopLeftRadius: 50,
     borderTopRightRadius: 50,
   },
   maroonWave: {
     flex: 1,
-    backgroundColor: Colors.primary[500], // Royal Maroon #6B1D2A
+    backgroundColor: Colors.primary[500],
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
