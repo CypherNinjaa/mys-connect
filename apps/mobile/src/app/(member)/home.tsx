@@ -55,6 +55,7 @@ export default function HomeScreen() {
   }
 
   const profile = user?.profile;
+  const isProfileIncomplete = !profile?.gotra || !profile?.fatherName || !user?.phone;
 
   return (
     <ScrollView
@@ -81,6 +82,26 @@ export default function HomeScreen() {
           <Text style={styles.roleBadgeText}>{user?.role || 'MEMBER'}</Text>
         </View>
       </View>
+
+      {/* Complete Profile Prompt Card */}
+      {isProfileIncomplete && (
+        <TouchableOpacity
+          style={styles.completeProfileBanner}
+          onPress={() => router.push('/(member)/profile')}
+          activeOpacity={0.9}
+        >
+          <View style={styles.completeProfileIconWrapper}>
+            <Ionicons name="sparkles" size={24} color={Colors.secondary[500]} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.completeProfileTitle}>Complete Your Member Profile</Text>
+            <Text style={styles.completeProfileSub}>
+              Tap to set your family gotra, native place & details in Profile.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.primary[500]} />
+        </TouchableOpacity>
+      )}
 
       {/* Quick Action Grid */}
       <Text style={styles.sectionHeading}>Quick Navigation</Text>
@@ -161,7 +182,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     elevation: 4,
   },
   welcomeText: {
@@ -195,6 +216,36 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: Colors.primary[900],
+  },
+  completeProfileBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF8EC',
+    borderRadius: Spacing.radiusMd,
+    padding: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: Colors.secondary[500],
+    marginBottom: Spacing.lg,
+    gap: 12,
+    elevation: 2,
+  },
+  completeProfileIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary[500],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  completeProfileTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: Colors.primary[900],
+  },
+  completeProfileSub: {
+    fontSize: 12,
+    color: Colors.text.secondary,
+    marginTop: 2,
   },
   sectionHeading: {
     fontSize: 16,
