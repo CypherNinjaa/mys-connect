@@ -1,0 +1,393 @@
+// ─────────────────────────────────────────────────────────
+// MYS CONNECT — Database Schema
+// Maheshwari Yuva Sangathan, Ranchi
+// ─────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  MEMBER
+  GUEST
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  DEACTIVATED
+  REJECTED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodGroup {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum RSVPStatus {
+  GOING
+  NOT_GOING
+  MAYBE
+}
+
+enum NoticeType {
+  GENERAL
+  URGENT
+  EVENT
+  MEETING
+  ANNOUNCEMENT
+}
+
+enum NoticePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationChannel {
+  PUSH
+  IN_APP
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODELS
+// ═══════════════════════════════════════════════════════════
+
+/// Core user account — linked to Clerk via clerkId
+model User {
+  id            String     @id @default(cuid())
+  clerkId       String     @unique
+  email         String     @unique
+  phone         String?    @unique
+  role          UserRole   @default(MEMBER)
+  status        UserStatus @default(PENDING)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  // Relations
+  profile       Profile?
+  eventRSVPs    EventRSVP[]
+  notifications Notification[]
+
+  @@index([clerkId])
+  @@index([status])
+  @@map("users")
+}
+
+/// Extended member profile — personal, professional, family info
+model Profile {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  
+  // Personal
+  firstName       String
+  lastName        String
+  displayName     String?
+  dateOfBirth     DateTime?
+  gender          Gender?
+  bloodGroup      BloodGroup?
+  avatarUrl       String?
+
+  // Contact
+  address         String?
+  cityId          String?
+  state           String?     @default("Jharkhand")
+  pinCode         String?
+
+  // Professional
+  occupation      String?
+  organization    String?
+  designation     String?
+
+  // Family
+  fatherName      String?
+  gotra           String?
+  nativePlace     String?
+
+  // Social
+  bio             String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city            City?       @relation(fields: [cityId], references: [id])
+
+  @@index([cityId])
+  @@index([firstName, lastName])
+  @@map("profiles")
+}
+
+/// City/Location for filtering members
+model City {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  state     String    @default("Jharkhand")
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  // Relations
+  profiles  Profile[]
+  events    Event[]
+
+  @@map("cities")
+}
+
+/// Events — managed by admins, visible to members
+model Event {
+  id            String      @id @default(cuid())
+  title         String
+  description   String
+  shortDesc     String?
+  
+  // Date & Time
+  startDate     DateTime
+  endDate       DateTime?
+  startTime     String?
+  endTime       String?
+  isAllDay      Boolean     @default(false)
+  
+  // Location
+  venue         String?
+  address       String?
+  cityId        String?
+  mapUrl        String?
+  isOnline      Boolean     @default(false)
+  meetingLink   String?
+  
+  // Media
+  coverImageUrl String?
+  
+  // Status
+  status        EventStatus @default(DRAFT)
+  isPublic      Boolean     @default(true)
+  maxAttendees  Int?
+  
+  // Admin
+  createdById   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Relations
+  city          City?       @relation(fields: [cityId], references: [id])
+  rsvps         EventRSVP[]
+  photos        EventPhoto[]
+
+  @@index([startDate])
+  @@index([status])
+  @@index([cityId])
+  @@map("events")
+}
+
+/// RSVP tracking for events
+model EventRSVP {
+  id        String     @id @default(cuid())
+  userId    String
+  eventId   String
+  status    RSVPStatus @default(GOING)
+  note      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@map("event_rsvps")
+}
+
+/// Photos attached to events
+model EventPhoto {
+  id        String   @id @default(cuid())
+  eventId   String
+  imageUrl  String
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  // Relations
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@map("event_photos")
+}
+
+/// Notices/Announcements — admin-published
+model Notice {
+  id          String         @id @default(cuid())
+  title       String
+  content     String
+  type        NoticeType     @default(GENERAL)
+  priority    NoticePriority @default(MEDIUM)
+  
+  // Scheduling
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  isPublished Boolean        @default(false)
+  isPinned    Boolean        @default(false)
+  
+  // Media
+  imageUrl    String?
+  attachmentUrl String?
+  
+  // Admin
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([isPublished, publishedAt])
+  @@index([type])
+  @@index([priority])
+  @@map("notices")
+}
+
+/// Photo album — admin-curated galleries
+model Album {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  coverImageUrl String?
+  isPublished Boolean      @default(false)
+  sortOrder   Int          @default(0)
+  
+  // Admin
+  createdById String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  photos      AlbumPhoto[]
+
+  @@index([isPublished])
+  @@map("albums")
+}
+
+/// Individual photos in an album
+model AlbumPhoto {
+  id        String   @id @default(cuid())
+  albumId   String
+  imageUrl  String
+  thumbnailUrl String?
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  // Relations
+  album     Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@index([albumId])
+  @@map("album_photos")
+}
+
+/// Push notification records
+model Notification {
+  id          String             @id @default(cuid())
+  userId      String
+  title       String
+  body        String
+  data        Json?
+  channel     NotificationChannel @default(PUSH)
+  status      NotificationStatus  @default(PENDING)
+  
+  // Tracking
+  sentAt      DateTime?
+  readAt      DateTime?
+  
+  createdAt   DateTime           @default(now())
+
+  // Relations
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+/// Push notification tokens (Expo Push)
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   // 'ios' | 'android'
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("push_tokens")
+}
+
+/// App-level settings — key/value store for admin config
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string") // string, number, boolean, json
+  group     String   @default("general")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([group])
+  @@map("app_settings")
+}
+
+/// Audit log — tracks admin actions
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  entity     String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -1,0 +1,25 @@
+{
+  "name": "mys-connect",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MYS CONNECT - Maheshwari Yuva Sangathan Community Platform",
+  "workspaces": [
+    "apps/*",
+    "server",
+    "packages/*"
+  ],
+  "scripts": {
+    "mobile": "npm run dev --workspace=apps/mobile",
+    "admin": "npm run dev --workspace=apps/admin",
+    "server": "npm run dev --workspace=server",
+    "db:migrate": "npm run db:migrate --workspace=server",
+    "db:seed": "npm run db:seed --workspace=server",
+    "db:studio": "npm run db:studio --workspace=server",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:reset": "docker compose down -v && docker compose up -d"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
