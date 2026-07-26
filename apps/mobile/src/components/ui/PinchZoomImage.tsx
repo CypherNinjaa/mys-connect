@@ -10,20 +10,44 @@ interface PinchZoomImageProps {
 }
 
 export function PinchZoomImage({ uri, width = SCREEN_WIDTH, height = SCREEN_HEIGHT * 0.7 }: PinchZoomImageProps) {
-  const pan = useRef(new Animated.ValueXY()).current;
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const scale = useRef(new Animated.Value(1)).current;
 
-  // Saved offset values
   const currentScale = useRef(1);
-  const initialPinchDistance = useRef<number | null>(null);
+  const initialDistance = useRef<number | null>(null);
+  const lastTapTime = useRef<number>(0);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: (evt) => evt.nativeEvent.touches.length === 2,
       onMoveShouldSetPanResponder: (_, gestureState) => {
         return gestureState.numberActiveTouches === 2 || currentScale.current > 1.05;
       },
-      onPanResponderGrant: () => {
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        return gestureState.numberActiveTouches === 2 || currentScale.current > 1.05;
+      },
+      onPanResponderGrant: (evt) => {
+        const now = Date.now();
+        if (evt.nativeEvent.touches.length === 1) {
+          // Double-Tap to Zoom In / Zoom Out Detection
+          if (now - lastTapTime.current < 300) {
+            if (currentScale.current > 1.2) {
+              // Zoom Out to 1x
+              Animated.parallel([
+                Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
+                Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }),
+              ]).start();
+              currentScale.current = 1;
+            } else {
+              // Zoom In to 2.5x
+              Animated.spring(scale, { toValue: 2.5, useNativeDriver: true }).start();
+              currentScale.current = 2.5;
+            }
+          }
+          lastTapTime.current = now;
+        }
+
         pan.setOffset({
           // @ts-ignore
           x: pan.x._value || 0,
@@ -36,15 +60,15 @@ export function PinchZoomImage({ uri, width = SCREEN_WIDTH, height = SCREEN_HEIG
         const touches = evt.nativeEvent.touches;
 
         if (touches.length === 2) {
-          // Pinch Zoom gesture logic for Android & iOS
+          // Two finger pinch calculation
           const dx = touches[0].pageX - touches[1].pageX;
           const dy = touches[0].pageY - touches[1].pageY;
           const distance = Math.sqrt(dx * dx + dy * dy);
 
-          if (initialPinchDistance.current === null) {
-            initialPinchDistance.current = distance;
+          if (initialDistance.current === null) {
+            initialDistance.current = distance;
           } else {
-            const factor = distance / initialPinchDistance.current;
+            const factor = distance / initialDistance.current;
             const newScale = Math.max(1, Math.min(4, currentScale.current * factor));
             scale.setValue(newScale);
           }
@@ -55,16 +79,18 @@ export function PinchZoomImage({ uri, width = SCREEN_WIDTH, height = SCREEN_HEIG
       },
       onPanResponderRelease: () => {
         pan.flattenOffset();
-        initialPinchDistance.current = null;
+        initialDistance.current = null;
 
         // @ts-ignore
         const finalScale = scale._value || 1;
         currentScale.current = finalScale;
 
         if (finalScale < 1) {
-          Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+          Animated.parallel([
+            Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
+            Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }),
+          ]).start();
           currentScale.current = 1;
-          Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
         }
       },
     })
