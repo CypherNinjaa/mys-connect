@@ -59,27 +59,44 @@ export class ApiService {
   }
 
   /**
-   * Upload profile image to Cloudinary
+   * Upload profile image to Cloudinary via base64 or FormData
    */
-  static async uploadAvatar(token: string, imageUri: string) {
-    const formData = new FormData();
-    const filename = imageUri.split('/').pop() || 'avatar.jpg';
-    const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : `image/jpeg`;
+  static async uploadAvatar(token: string, imageUriOrBase64: string) {
+    let bodyData: any;
+    let headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+    };
 
-    // @ts-expect-error - React Native FormData accepts uri/name/type object
-    formData.append('avatar', {
-      uri: imageUri,
-      name: filename,
-      type,
-    });
+    if (imageUriOrBase64.startsWith('data:') || !imageUriOrBase64.startsWith('file://')) {
+      // Base64 string payload
+      headers['Content-Type'] = 'application/json';
+      bodyData = JSON.stringify({ base64: imageUriOrBase64 });
+    } else {
+      // Try multipart formData for file:// URIs
+      try {
+        const formData = new FormData();
+        const filename = imageUriOrBase64.split('/').pop() || 'avatar.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+
+        // @ts-expect-error - React Native FormData accepts uri/name/type object
+        formData.append('avatar', {
+          uri: imageUriOrBase64,
+          name: filename,
+          type,
+        });
+        bodyData = formData;
+      } catch {
+        // Fallback to JSON payload
+        headers['Content-Type'] = 'application/json';
+        bodyData = JSON.stringify({ base64: imageUriOrBase64 });
+      }
+    }
 
     const res = await fetch(`${API.baseUrl}/users/avatar`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
+      headers,
+      body: bodyData,
     });
 
     const data = await res.json();

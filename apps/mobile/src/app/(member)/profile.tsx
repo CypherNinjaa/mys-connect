@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,19 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Image,
   Alert,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService, RegisterProfileData } from '../../services/api';
-import * as ImagePicker from 'expo-image-picker';
 import { ProfileSkeleton } from '../../components/ui/SkeletonLoader';
+import { CloudinaryMedia } from '../../components/ui/CloudinaryMedia';
 
 const BLOOD_GROUPS = [
   { label: 'A+', value: 'A_POSITIVE' },
@@ -45,7 +47,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [activeModal, setActiveModal] = useState<'PERSONAL' | 'ADDRESS' | 'BUSINESS' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Form States
@@ -103,38 +105,69 @@ export default function ProfileScreen() {
     }
   }, [isSignedIn]);
 
-  const handlePickAvatar = async () => {
+  // Handle Cloudinary Avatar Upload
+  const handleUploadAvatarSuccess = async (base64OrUri: string) => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission?.granted) {
-        Alert.alert('Permission Required', 'Media library access is needed to select a profile photo.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets?.[0]?.uri) {
-        setIsUploadingAvatar(true);
-        const token = await getToken();
-        if (token) {
-          const updated = await ApiService.uploadAvatar(token, result.assets[0].uri);
-          setUser((prev: any) => ({
-            ...prev,
-            avatarUrl: updated?.avatarUrl || result.assets[0].uri,
-            profile: { ...prev?.profile, avatarUrl: updated?.avatarUrl || result.assets[0].uri },
-          }));
-          await loadProfile();
-        }
+      const token = await getToken();
+      if (token) {
+        const updated = await ApiService.uploadAvatar(token, base64OrUri);
+        setUser((prev: any) => ({
+          ...prev,
+          avatarUrl: updated?.avatarUrl || base64OrUri,
+          profile: { ...prev?.profile, avatarUrl: updated?.avatarUrl || base64OrUri },
+        }));
+        await loadProfile();
+        Alert.alert('Success 🎉', 'Profile photo updated successfully!');
       }
     } catch (err: any) {
       Alert.alert('Upload Error', err.message || 'Failed to update avatar photo');
+    }
+  };
+
+  // Realtime GPS Location Fetch
+  const handleFetchCurrentLocation = async () => {
+    try {
+      setIsLocating(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Permission to access GPS location was denied.');
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const geocoded = await Location.reverseGeocodeAsync({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+
+      if (geocoded && geocoded.length > 0) {
+        const loc = geocoded[0];
+        const formattedAddress = [loc.name, loc.street, loc.subregion, loc.district]
+          .filter(Boolean)
+          .join(', ');
+
+        if (formattedAddress) setAddress(formattedAddress);
+        if (loc.postalCode) setPinCode(loc.postalCode);
+
+        // Auto-select city chip if matched
+        const cityName = loc.city || loc.subregion || loc.district;
+        if (cityName && cities.length > 0) {
+          const matched = cities.find((c) =>
+            c.name.toLowerCase().includes(cityName.toLowerCase())
+          );
+          if (matched) setCityId(matched.id);
+        }
+
+        Alert.alert('Location Updated 📍', `Detected: ${cityName || 'Current Address'}`);
+      }
+    } catch (err: any) {
+      console.error('Fetch location error:', err);
+      Alert.alert('Location Error', err.message || 'Could not fetch current GPS location.');
     } finally {
-      setIsUploadingAvatar(false);
+      setIsLocating(false);
     }
   };
 
@@ -169,6 +202,7 @@ export default function ProfileScreen() {
       if (result?.user) setUser(result.user);
       setActiveModal(null);
       await loadProfile();
+      Alert.alert('Success', 'Profile updated successfully!');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to save profile changes');
     } finally {
@@ -204,22 +238,20 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header Profile Section — Wireframe 10 */}
+      {/* Header Profile Section — Wireframe 10 with Cloudinary */}
       <View style={styles.profileHeaderCard}>
-        <TouchableOpacity style={styles.avatarContainer} onPress={handlePickAvatar} activeOpacity={0.85}>
-          <View style={styles.avatarCircle}>
-            {isUploadingAvatar ? (
-              <ActivityIndicator color={Colors.secondary[500]} />
-            ) : user?.avatarUrl || profile?.avatarUrl ? (
-              <Image source={{ uri: user?.avatarUrl || profile?.avatarUrl }} style={styles.avatarImage} />
-            ) : (
-              <Text style={styles.avatarInitials}>{displayName[0]?.toUpperCase()}</Text>
-            )}
-          </View>
-          <View style={styles.cameraIconBadge}>
-            <Ionicons name="camera" size={14} color="#FFFFFF" />
-          </View>
-        </TouchableOpacity>
+        <CloudinaryMedia
+          imageUri={user?.avatarUrl || profile?.avatarUrl}
+          fallbackInitials={displayName[0] || 'M'}
+          width={88}
+          height={88}
+          borderRadius={44}
+          allowUpload={true}
+          allowDownload={true}
+          onUploadSuccess={handleUploadAvatarSuccess}
+          transformOptions={{ crop: 'fill', gravity: 'face', quality: 'auto' }}
+          style={{ marginBottom: 12 }}
+        />
 
         <Text style={styles.displayNameText}>{displayName}</Text>
         <Text style={styles.memberIdText}>Member ID: {memberIdStr}</Text>
@@ -231,7 +263,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Menu List Options — Matching Wireframe 10 */}
+      {/* Menu List Options — Wireframe 10 */}
       <View style={styles.menuContainer}>
         {/* 1. Personal Information */}
         <TouchableOpacity style={styles.menuRow} onPress={() => setActiveModal('PERSONAL')}>
@@ -272,14 +304,14 @@ export default function ProfileScreen() {
         {/* 4. Change Password */}
         <TouchableOpacity
           style={styles.menuRow}
-          onPress={() => router.push('/(auth)/forgot-password')}
+          onPress={() => router.push('/(member)/change-password')}
         >
           <View style={styles.menuIconCircle}>
             <Ionicons name="lock-closed-outline" size={20} color={Colors.primary[500]} />
           </View>
           <View style={styles.menuTextContent}>
             <Text style={styles.menuTitle}>Change Password</Text>
-            <Text style={styles.menuSub}>Reset account credentials</Text>
+            <Text style={styles.menuSub}>Reset account credentials via Clerk</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
         </TouchableOpacity>
@@ -306,9 +338,12 @@ export default function ProfileScreen() {
         <Text style={styles.signOutBtnText}>Sign Out Account</Text>
       </TouchableOpacity>
 
-      {/* Edit Profile Section Modal */}
+      {/* Edit Profile Section Modal with KeyboardAvoidingView Fix */}
       <Modal visible={Boolean(activeModal)} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalHeaderTitle}>
@@ -327,7 +362,7 @@ export default function ProfileScreen() {
               </View>
             )}
 
-            <ScrollView style={styles.formScroll}>
+            <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled">
               {activeModal === 'PERSONAL' && (
                 <>
                   <View style={styles.inputGroup}>
@@ -375,9 +410,31 @@ export default function ProfileScreen() {
 
               {activeModal === 'ADDRESS' && (
                 <>
+                  {/* Realtime GPS Location Button */}
+                  <TouchableOpacity
+                    style={styles.locationCtaBtn}
+                    onPress={handleFetchCurrentLocation}
+                    disabled={isLocating}
+                  >
+                    {isLocating ? (
+                      <ActivityIndicator color={Colors.primary[500]} size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="navigate-circle" size={20} color={Colors.primary[500]} style={{ marginRight: 6 }} />
+                        <Text style={styles.locationCtaText}>Use My Current Location</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>Residential Address</Text>
-                    <TextInput style={[styles.input, { height: 80 }]} multiline value={address} onChangeText={setAddress} placeholder="Street / Colony Address" />
+                    <TextInput
+                      style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
+                      multiline
+                      value={address}
+                      onChangeText={setAddress}
+                      placeholder="Street / Colony Address"
+                    />
                   </View>
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>City Chapter</Text>
@@ -426,7 +483,7 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );
@@ -449,43 +506,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
     elevation: 3,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: 10,
-  },
-  avatarCircle: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: Colors.primary[600],
-    borderWidth: 3,
-    borderColor: Colors.secondary[500],
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarInitials: {
-    color: Colors.secondary[500],
-    fontSize: 32,
-    fontWeight: '800',
-  },
-  cameraIconBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: Colors.secondary[500],
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.primary[500],
-  },
   displayNameText: {
     fontSize: 20,
     fontWeight: '800',
@@ -498,24 +518,22 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   activeMemberBadge: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(212,160,65,0.4)',
+    marginTop: 10,
   },
   activeMemberBadgeText: {
-    color: Colors.secondary[400],
-    fontSize: 11,
+    color: Colors.secondary[500],
+    fontSize: 12,
     fontWeight: '700',
   },
   menuContainer: {
     backgroundColor: Colors.neutral[0],
     borderRadius: Spacing.radiusLg,
-    paddingVertical: 6,
-    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
     elevation: 2,
     borderWidth: 1,
     borderColor: '#EDF2F7',
@@ -523,15 +541,14 @@ const styles = StyleSheet.create({
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.md,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#EDF2F7',
   },
   menuIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#FFF5F5',
     justifyContent: 'center',
     alignItems: 'center',
@@ -554,11 +571,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFF5F5',
-    borderWidth: 1,
-    borderColor: '#FEB2B2',
+    backgroundColor: Colors.neutral[0],
     borderRadius: Spacing.radiusMd,
     paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
   },
   signOutBtnText: {
     color: '#E53E3E',
@@ -571,37 +588,39 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: Colors.neutral[0],
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: Spacing.md,
+    maxHeight: '88%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingBottom: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#EDF2F7',
   },
   modalHeaderTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
-    color: Colors.primary[500],
-  },
-  errorBox: {
-    backgroundColor: '#FFF5F5',
-    padding: 10,
-    borderRadius: 8,
-    marginTop: 10,
-  },
-  errorText: {
-    color: '#E53E3E',
-    fontSize: 13,
+    color: Colors.primary[900],
   },
   formScroll: {
-    marginTop: 14,
+    marginTop: 12,
+  },
+  errorBox: {
+    backgroundColor: Colors.error.light,
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.error.main,
+  },
+  errorText: {
+    color: Colors.error.dark,
+    fontSize: 12,
   },
   inputGroup: {
     marginBottom: 14,
@@ -613,26 +632,27 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   input: {
-    borderWidth: 1,
-    borderColor: Colors.border.default,
+    backgroundColor: '#F8F9FA',
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
     color: Colors.text.primary,
-    backgroundColor: '#FAFAFA',
   },
   chipRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   chip: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#EDF2F7',
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F8F9FA',
     borderWidth: 1,
-    borderColor: Colors.border.default,
+    borderColor: '#E2E8F0',
     marginRight: 6,
   },
   chipActive: {
@@ -640,27 +660,44 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary[500],
   },
   chipText: {
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '600',
     color: Colors.text.secondary,
   },
   chipTextActive: {
     color: Colors.neutral[0],
     fontWeight: '700',
   },
+  locationCtaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
+    borderRadius: 8,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  locationCtaText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary[500],
+  },
   saveBtn: {
     backgroundColor: Colors.primary[500],
-    paddingVertical: 14,
     borderRadius: 10,
+    paddingVertical: 14,
     alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 20,
+    marginTop: 10,
+    marginBottom: 30,
   },
   btnDisabled: {
-    opacity: 0.6,
+    opacity: 0.65,
   },
   saveBtnText: {
     color: '#FFFFFF',
-    fontWeight: '700',
     fontSize: 15,
+    fontWeight: '700',
   },
 });

@@ -9,10 +9,23 @@ cloudinary.config({
 
 export { cloudinary };
 
-export const uploadToCloudinary = (
-  fileBuffer: Buffer,
+export const uploadToCloudinary = async (
+  fileData: Buffer | string,
   folder: string = 'mys-connect/avatars'
 ): Promise<string> => {
+  if (typeof fileData === 'string') {
+    const formattedData = fileData.startsWith('data:') ? fileData : `data:image/jpeg;base64,${fileData}`;
+    const result = await cloudinary.uploader.upload(formattedData, {
+      folder,
+      resource_type: 'image',
+      transformation: [
+        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+        { quality: 'auto', fetch_format: 'auto' },
+      ],
+    });
+    return result.secure_url;
+  }
+
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
@@ -29,6 +42,6 @@ export const uploadToCloudinary = (
         resolve(result.secure_url);
       }
     );
-    uploadStream.end(fileBuffer);
+    uploadStream.end(fileData);
   });
 };

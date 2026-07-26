@@ -100,14 +100,20 @@ export class UserController {
     try {
       // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
-      if (!req.file) {
+      const base64Data = req.body?.base64 || req.body?.image;
+
+      let avatarUrl: string;
+      if (base64Data) {
+        avatarUrl = await uploadToCloudinary(base64Data, 'mys-connect/avatars');
+      } else if (req.file) {
+        avatarUrl = await uploadToCloudinary(req.file.buffer, 'mys-connect/avatars');
+      } else {
         return res.status(400).json({
           success: false,
-          error: { message: 'Image file is required.' },
+          error: { message: 'Image file or base64 data is required.' },
         });
       }
 
-      const avatarUrl = await uploadToCloudinary(req.file.buffer, 'mys-connect/avatars');
       const profile = await UserService.updateAvatar(userId, avatarUrl);
 
       res.json({
