@@ -1,5 +1,13 @@
-import React, { useRef } from 'react';
-import { View, Animated, PanResponder, StyleSheet, Dimensions } from 'react-native';
+import React from 'react';
+import { StyleSheet, Dimensions, View } from 'react-native';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  clamp,
+} from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -9,110 +17,104 @@ interface PinchZoomImageProps {
   height?: number;
 }
 
-export function PinchZoomImage({ uri, width = SCREEN_WIDTH, height = SCREEN_HEIGHT * 0.7 }: PinchZoomImageProps) {
-  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const scale = useRef(new Animated.Value(1)).current;
+export function PinchZoomImage({
+  uri,
+  width = SCREEN_WIDTH,
+  height = SCREEN_HEIGHT * 0.7,
+}: PinchZoomImageProps) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
 
-  const currentScale = useRef(1);
-  const initialDistance = useRef<number | null>(null);
-  const lastTapTime = useRef<number>(0);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: (evt) => evt.nativeEvent.touches.length === 2,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return gestureState.numberActiveTouches === 2 || currentScale.current > 1.05;
-      },
-      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
-        return gestureState.numberActiveTouches === 2 || currentScale.current > 1.05;
-      },
-      onPanResponderGrant: (evt) => {
-        const now = Date.now();
-        if (evt.nativeEvent.touches.length === 1) {
-          // Double-Tap to Zoom In / Zoom Out Detection
-          if (now - lastTapTime.current < 300) {
-            if (currentScale.current > 1.2) {
-              // Zoom Out to 1x
-              Animated.parallel([
-                Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
-                Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }),
-              ]).start();
-              currentScale.current = 1;
-            } else {
-              // Zoom In to 2.5x
-              Animated.spring(scale, { toValue: 2.5, useNativeDriver: true }).start();
-              currentScale.current = 2.5;
-            }
-          }
-          lastTapTime.current = now;
+  // Double Tap Gesture to toggle zoom (1x <-> 2.5x)
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd((_event, success) => {
+      'worklet';
+      if (success) {
+        if (scale.value > 1.2) {
+          scale.value = withTiming(1, { duration: 250 });
+          savedScale.value = 1;
+          translateX.value = withTiming(0, { duration: 250 });
+          translateY.value = withTiming(0, { duration: 250 });
+          savedTranslateX.value = 0;
+          savedTranslateY.value = 0;
+        } else {
+          scale.value = withTiming(2.5, { duration: 250 });
+          savedScale.value = 2.5;
         }
+      }
+    });
 
-        pan.setOffset({
-          // @ts-ignore
-          x: pan.x._value || 0,
-          // @ts-ignore
-          y: pan.y._value || 0,
-        });
-        pan.setValue({ x: 0, y: 0 });
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        const touches = evt.nativeEvent.touches;
-
-        if (touches.length === 2) {
-          // Two finger pinch calculation
-          const dx = touches[0].pageX - touches[1].pageX;
-          const dy = touches[0].pageY - touches[1].pageY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-
-          if (initialDistance.current === null) {
-            initialDistance.current = distance;
-          } else {
-            const factor = distance / initialDistance.current;
-            const newScale = Math.max(1, Math.min(4, currentScale.current * factor));
-            scale.setValue(newScale);
-          }
-        } else if (touches.length === 1 && currentScale.current > 1.05) {
-          // Pan image when zoomed in
-          pan.setValue({ x: gestureState.dx, y: gestureState.dy });
-        }
-      },
-      onPanResponderRelease: () => {
-        pan.flattenOffset();
-        initialDistance.current = null;
-
-        // @ts-ignore
-        const finalScale = scale._value || 1;
-        currentScale.current = finalScale;
-
-        if (finalScale < 1) {
-          Animated.parallel([
-            Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
-            Animated.spring(pan, { toValue: { x: 0, y: 0 }, useNativeDriver: true }),
-          ]).start();
-          currentScale.current = 1;
-        }
-      },
+  // Smooth Pinch-to-Zoom Gesture (1x - 4x)
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((event) => {
+      'worklet';
+      const newScale = savedScale.value * event.scale;
+      scale.value = clamp(newScale, 0.8, 4.5);
     })
-  ).current;
+    .onEnd(() => {
+      'worklet';
+      if (scale.value < 1) {
+        scale.value = withSpring(1);
+        savedScale.value = 1;
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
+      } else if (scale.value > 4) {
+        scale.value = withSpring(4);
+        savedScale.value = 4;
+      } else {
+        savedScale.value = scale.value;
+      }
+    });
+
+  // Pan Gesture (only active when zoomed in > 1x)
+  const panGesture = Gesture.Pan()
+    .minPointers(1)
+    .maxPointers(2)
+    .onUpdate((event) => {
+      'worklet';
+      if (savedScale.value > 1.05) {
+        const boundX = (width * (savedScale.value - 1)) / 2;
+        const boundY = (height * (savedScale.value - 1)) / 2;
+        translateX.value = clamp(savedTranslateX.value + event.translationX, -boundX, boundX);
+        translateY.value = clamp(savedTranslateY.value + event.translationY, -boundY, boundY);
+      }
+    })
+    .onEnd(() => {
+      'worklet';
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  // Compose Gestures
+  const composedGesture = Gesture.Race(
+    doubleTapGesture,
+    Gesture.Simultaneous(pinchGesture, panGesture)
+  );
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
-      <Animated.Image
-        source={{ uri }}
-        style={[
-          styles.image,
-          { width, height },
-          {
-            transform: [
-              { translateX: pan.x },
-              { translateY: pan.y },
-              { scale: scale },
-            ],
-          },
-        ]}
-        resizeMode="contain"
-      />
+    <View style={styles.container}>
+      <GestureDetector gesture={composedGesture}>
+        <Animated.Image
+          source={{ uri }}
+          style={[styles.image, { width, height }, animatedStyle]}
+          resizeMode="contain"
+        />
+      </GestureDetector>
     </View>
   );
 }
