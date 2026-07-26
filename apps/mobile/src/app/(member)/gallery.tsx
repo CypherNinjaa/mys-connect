@@ -14,6 +14,9 @@ import {
   Platform,
   BackHandler,
   Alert,
+  ScrollView,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
@@ -23,6 +26,11 @@ import { GalleryCacheManager } from '../../services/galleryCacheManager';
 import { GalleryCard, GalleryItemData } from '../../components/gallery/GalleryCard';
 import { SkeletonItem } from '../../components/ui/SkeletonLoader';
 import { downloadCloudinaryImage, buildCloudinaryUrl } from '../../utils/cloudinary';
+
+// Enable LayoutAnimation for Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type CategoryTab = 'All' | 'Events' | 'Celebrations' | 'Others';
 
@@ -44,31 +52,33 @@ export default function GalleryScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
 
-  // Android Hardware Back Navigation Handler
-  useEffect(() => {
-    const onBackPress = () => {
-      if (selectedPhoto) {
-        setSelectedPhoto(null);
-        return true;
-      }
-      if (isSearching) {
-        setIsSearching(false);
-        setSearchQuery('');
-        setDebouncedQuery('');
-        return true;
-      }
-      if (router.canGoBack()) {
-        router.back();
-        return true;
-      }
-      return false;
-    };
-
-    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => subscription.remove();
+  // Smart Back Navigation Handler
+  const handleBackNavigation = useCallback(() => {
+    if (selectedPhoto) {
+      setSelectedPhoto(null);
+      return true;
+    }
+    if (isSearching) {
+      setIsSearching(false);
+      setSearchQuery('');
+      setDebouncedQuery('');
+      return true;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(member)/home');
+    }
+    return true;
   }, [selectedPhoto, isSearching, router]);
 
-  // Debounce search query (300ms) to avoid unnecessary operations
+  // Android Hardware Back Listener
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', handleBackNavigation);
+    return () => subscription.remove();
+  }, [handleBackNavigation]);
+
+  // Debounce search query (300ms)
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
@@ -79,7 +89,6 @@ export default function GalleryScreen() {
   // Initial Data Fetch & Client Cache Retrieval
   const loadGalleryData = useCallback(
     async (isForceRefresh = false) => {
-      // 1. Check local in-memory cache if not forcing refresh
       if (!isForceRefresh) {
         const cached = GalleryCacheManager.getCachedData();
         if (cached && cached.items && cached.items.length > 0) {
@@ -102,14 +111,12 @@ export default function GalleryScreen() {
 
       try {
         const token = (await getToken()) || undefined;
-        // Fetch up to 100 gallery items across all categories for client-side caching & instant tab filtering
         const res = await ApiService.getGallery(token, undefined, undefined, 1, 100);
 
         if (res && Array.isArray(res.items) && res.items.length > 0) {
           setAllGalleryItems(res.items);
           GalleryCacheManager.setCachedData({ items: res.items, albums: res.albums || [] });
         } else {
-          // Fallback to sample photos if backend returns empty
           const sampleItems: GalleryItemData[] = [
             {
               id: 'g-1',
@@ -187,10 +194,17 @@ export default function GalleryScreen() {
     void loadGalleryData(true);
   };
 
-  // Client-side filtering by category & search query (0 API requests)
+  // Smooth Category Tab Switch Handler
+  const handleTabSwitch = (tab: CategoryTab) => {
+    if (activeCategory !== tab) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setActiveCategory(tab);
+    }
+  };
+
+  // Client-side filtering by category & search query
   const filteredGalleryItems = useMemo(() => {
     return allGalleryItems.filter((item) => {
-      // Category Filter
       let matchesCategory = true;
       if (activeCategory !== 'All') {
         matchesCategory = item.category?.toLowerCase() === activeCategory.toLowerCase();
@@ -198,7 +212,6 @@ export default function GalleryScreen() {
 
       if (!matchesCategory) return false;
 
-      // Search Query Filter
       if (debouncedQuery.trim()) {
         const q = debouncedQuery.trim().toLowerCase();
         const titleMatch = item.title?.toLowerCase().includes(q);
@@ -235,8 +248,9 @@ export default function GalleryScreen() {
         <View style={styles.headerRow}>
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => router.back()}
+            onPress={handleBackNavigation}
             activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -255,6 +269,7 @@ export default function GalleryScreen() {
               }
             }}
             activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Ionicons name={isSearching ? 'close' : 'search'} size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -286,9 +301,9 @@ export default function GalleryScreen() {
         )}
       </View>
 
-      {/* Main Content Area */}
+      {/* Main Content Body */}
       <View style={styles.body}>
-        {/* Category Tab Segment Bar — Matching Wireframe */}
+        {/* Category Tab Segment Bar */}
         <View style={styles.tabBarContainer}>
           {CATEGORY_TABS.map((tab) => {
             const isActive = activeCategory === tab;
@@ -296,11 +311,7 @@ export default function GalleryScreen() {
               <TouchableOpacity
                 key={tab}
                 style={styles.tabItem}
-                onPress={() => {
-                  if (activeCategory !== tab) {
-                    setActiveCategory(tab);
-                  }
-                }}
+                onPress={() => handleTabSwitch(tab)}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
@@ -320,7 +331,7 @@ export default function GalleryScreen() {
           </View>
         )}
 
-        {/* Error Banner with Retry */}
+        {/* Error Banner */}
         {hasError && (
           <TouchableOpacity
             style={styles.errorBanner}
@@ -386,29 +397,45 @@ export default function GalleryScreen() {
         )}
       </View>
 
-      {/* Full-Screen High-Resolution Image Viewer Modal */}
-      <Modal visible={Boolean(selectedPhoto)} transparent animationType="fade">
+      {/* Full-Screen High-Resolution Image Viewer Modal with Pinch-To-Zoom & Safe Top Padding */}
+      <Modal visible={Boolean(selectedPhoto)} transparent animationType="fade" onRequestClose={() => setSelectedPhoto(null)}>
         <View style={styles.modalOverlay}>
           <SafeAreaView style={styles.modalSafeArea}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setSelectedPhoto(null)} style={styles.modalBtn}>
-                <Ionicons name="close" size={26} color="#FFFFFF" />
+            {/* Modal Header with Safe Inset Padding */}
+            <View style={styles.modalHeaderRow}>
+              <TouchableOpacity
+                onPress={() => setSelectedPhoto(null)}
+                style={styles.modalActionBtn}
+                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+              >
+                <Ionicons name="close" size={28} color="#FFFFFF" />
               </TouchableOpacity>
-              <Text style={styles.modalTitle} numberOfLines={1}>
+
+              <Text style={styles.modalTitleText} numberOfLines={1}>
                 {selectedPhoto?.title || 'Gallery Photo'}
               </Text>
+
               <TouchableOpacity
                 onPress={() => selectedPhoto && handleDownloadPhoto(selectedPhoto)}
-                style={styles.modalBtn}
+                style={styles.modalActionBtn}
+                hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
               >
-                <Ionicons name="download-outline" size={24} color="#FFFFFF" />
+                <Ionicons name="download-outline" size={26} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
-            {/* Modal Image Display */}
+            {/* Pinch-To-Zoom Scrollable Container */}
             {selectedPhoto && (
-              <View style={styles.modalImageWrapper}>
+              <ScrollView
+                style={styles.zoomScrollView}
+                contentContainerStyle={styles.zoomContentContainer}
+                maximumZoomScale={4}
+                minimumZoomScale={1}
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
+                centerContent
+                pinchGestureEnabled
+              >
                 <Image
                   source={{
                     uri: buildCloudinaryUrl(selectedPhoto.imageUrl, {
@@ -416,15 +443,15 @@ export default function GalleryScreen() {
                       format: 'auto',
                     }),
                   }}
-                  style={styles.fullImage}
+                  style={styles.modalFullImage}
                   resizeMode="contain"
                 />
-              </View>
+              </ScrollView>
             )}
 
-            {/* Modal Caption Footer */}
+            {/* Modal Footer Caption */}
             {selectedPhoto && (
-              <View style={styles.modalFooter}>
+              <View style={styles.modalFooterBox}>
                 <Text style={styles.modalCaptionTitle}>{selectedPhoto.title}</Text>
                 <View style={styles.badgeRow}>
                   <View style={styles.categoryBadge}>
@@ -596,44 +623,55 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
+
+  /* Modal Safe Area & Pinch-To-Zoom Styling */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
+    backgroundColor: 'rgba(0, 0, 0, 0.96)',
   },
   modalSafeArea: {
     flex: 1,
     justifyContent: 'space-between',
   },
-  modalHeader: {
+  modalHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 12 : 20,
+    paddingBottom: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    zIndex: 10,
   },
-  modalBtn: {
+  modalActionBtn: {
     padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
-  modalTitle: {
+  modalTitleText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginHorizontal: 10,
+    marginHorizontal: 12,
   },
-  modalImageWrapper: {
+  zoomScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  zoomContentContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fullImage: {
+  modalFullImage: {
     width: '100%',
     height: '100%',
   },
-  modalFooter: {
+  modalFooterBox: {
     padding: 20,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   modalCaptionTitle: {
     fontSize: 16,
