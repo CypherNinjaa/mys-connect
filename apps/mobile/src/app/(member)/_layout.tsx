@@ -28,7 +28,7 @@ export default function MemberLayout() {
     return () => {
       isMounted = false;
     };
-  }, [getToken, isSignedIn]);
+  }, [isSignedIn]);
 
   if (!isLoaded) {
     return null;

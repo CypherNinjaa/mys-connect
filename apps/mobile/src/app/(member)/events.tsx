@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,7 @@ export default function EventsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [registeringId, setRegisteringId] = useState<string | null>(null);
 
-  const fetchEvents = useCallback(async () => {
+  const fetchEvents = async () => {
     try {
       if (isSignedIn) {
         const token = await getToken();
@@ -39,16 +39,20 @@ export default function EventsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeTab, getToken, isSignedIn]);
+  };
 
   useEffect(() => {
-    setLoading(true);
-    void fetchEvents();
-  }, [fetchEvents]);
+    if (isSignedIn) {
+      setLoading(true);
+      void fetchEvents();
+    } else {
+      setLoading(false);
+    }
+  }, [activeTab, isSignedIn]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchEvents();
+    void fetchEvents();
   };
 
   const handleRegister = async (eventId: string, isRegistered: boolean) => {

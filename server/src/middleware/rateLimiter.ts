@@ -3,7 +3,7 @@ import { config } from '../config';
 
 export const apiLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
+  max: config.nodeEnv === 'development' ? 5000 : config.rateLimit.maxRequests,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -18,7 +18,7 @@ export const apiLimiter = rateLimit({
 // Stricter limiter for auth routes
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,
+  max: config.nodeEnv === 'development' ? 500 : 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,7 @@ export default function NoticesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<any | null>(null);
 
-  const fetchNotices = useCallback(async () => {
+  const fetchNotices = async () => {
     try {
       if (isSignedIn) {
         const token = await getToken();
@@ -39,16 +39,20 @@ export default function NoticesScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeCategory, getToken, isSignedIn]);
+  };
 
   useEffect(() => {
-    setLoading(true);
-    void fetchNotices();
-  }, [fetchNotices]);
+    if (isSignedIn) {
+      setLoading(true);
+      void fetchNotices();
+    } else {
+      setLoading(false);
+    }
+  }, [activeCategory, isSignedIn]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchNotices();
+    void fetchNotices();
   };
 
   return (

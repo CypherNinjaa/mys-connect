@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,7 @@ export default function MemberDirectoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMembers = useCallback(async () => {
+  const fetchMembers = async () => {
     try {
       const token = (await getToken()) || undefined;
       const res = await ApiService.getMembers(token, search, activeCity);
@@ -36,7 +36,7 @@ export default function MemberDirectoryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [activeCity, getToken, search]);
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -44,11 +44,11 @@ export default function MemberDirectoryScreen() {
       void fetchMembers();
     }, 300); // 300ms debounce for search
     return () => clearTimeout(timer);
-  }, [fetchMembers]);
+  }, [search, activeCity, isSignedIn]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchMembers();
+    void fetchMembers();
   };
 
   return (

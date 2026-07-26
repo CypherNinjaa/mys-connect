@@ -61,7 +61,7 @@ export default function ProfileScreen() {
   const [organization, setOrganization] = useState('');
   const [designation, setDesignation] = useState('');
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = async () => {
     try {
       if (isSignedIn) {
         const token = await getToken();
@@ -93,11 +93,15 @@ export default function ProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, [getToken, isSignedIn]);
+  };
 
   useEffect(() => {
-    void loadProfile();
-  }, [loadProfile]);
+    if (isSignedIn) {
+      void loadProfile();
+    } else {
+      setLoading(false);
+    }
+  }, [isSignedIn]);
 
   const handlePickAvatar = async () => {
     try {

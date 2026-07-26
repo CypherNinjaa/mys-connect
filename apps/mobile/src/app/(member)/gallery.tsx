@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,7 @@ export default function GalleryScreen() {
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchAlbums = useCallback(async () => {
+  const fetchAlbums = async () => {
     try {
       if (isSignedIn) {
         const token = await getToken();
@@ -46,15 +46,19 @@ export default function GalleryScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getToken, isSignedIn]);
+  };
 
   useEffect(() => {
-    void fetchAlbums();
-  }, [fetchAlbums]);
+    if (isSignedIn) {
+      void fetchAlbums();
+    } else {
+      setLoading(false);
+    }
+  }, [isSignedIn]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchAlbums();
+    void fetchAlbums();
   };
 
   const handleOpenAlbum = async (album: any) => {

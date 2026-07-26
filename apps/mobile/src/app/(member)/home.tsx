@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -25,21 +25,20 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadHomeData = useCallback(async () => {
+  const loadHomeData = async () => {
+    if (!isSignedIn) return;
     try {
-      if (isSignedIn) {
-        const token = await getToken();
-        if (token) {
-          const [userData, eventsData] = await Promise.all([
-            ApiService.getMe(token).catch(() => null),
-            ApiService.getEvents(token, 'UPCOMING').catch(() => ({ events: [] })),
-          ]);
+      const token = await getToken();
+      if (token) {
+        const [userData, eventsData] = await Promise.all([
+          ApiService.getMe(token).catch(() => null),
+          ApiService.getEvents(token, 'UPCOMING').catch(() => ({ events: [] })),
+        ]);
 
-          if (userData) setUser(userData);
-          if (eventsData?.events?.length) {
-            setFeaturedEvent(eventsData.events[0]);
-            setUpcomingEvents(eventsData.events.slice(1, 4));
-          }
+        if (userData) setUser(userData);
+        if (eventsData?.events?.length) {
+          setFeaturedEvent(eventsData.events[0]);
+          setUpcomingEvents(eventsData.events.slice(1, 4));
         }
       }
     } catch (err) {
@@ -48,15 +47,19 @@ export default function HomeScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getToken, isSignedIn]);
+  };
 
   useEffect(() => {
-    void loadHomeData();
-  }, [loadHomeData]);
+    if (isSignedIn) {
+      void loadHomeData();
+    } else {
+      setLoading(false);
+    }
+  }, [isSignedIn]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadHomeData();
+    void loadHomeData();
   };
 
   const getTimeGreeting = () => {
@@ -264,7 +267,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Motto Banner */}
+      {/* Motto Footer Banner */}
       <View style={styles.mottoFooter}>
         <Text style={styles.mottoText}>{APP.mottoHindi}</Text>
       </View>

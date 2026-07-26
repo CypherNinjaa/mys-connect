@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = async () => {
     try {
       if (isSignedIn) {
         const token = await getToken();
@@ -34,15 +34,19 @@ export default function NotificationsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [getToken, isSignedIn]);
+  };
 
   useEffect(() => {
-    void fetchNotifications();
-  }, [fetchNotifications]);
+    if (isSignedIn) {
+      void fetchNotifications();
+    } else {
+      setLoading(false);
+    }
+  }, [isSignedIn]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchNotifications();
+    void fetchNotifications();
   };
 
   const handleMarkAllRead = async () => {
