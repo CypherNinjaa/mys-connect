@@ -62,7 +62,7 @@ export default function MemberLayout() {
       <Tabs.Screen
         name="home"
         options={{
-          title: 'MYS CONNECT',
+          headerShown: false,
           tabBarLabel: 'Home',
           tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={22} color={color} />,
         }}

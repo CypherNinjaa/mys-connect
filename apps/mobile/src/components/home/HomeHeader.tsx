@@ -1,7 +1,6 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '../../constants/theme';
 
 interface HomeHeaderProps {
   greeting: string;
@@ -20,8 +19,10 @@ export function HomeHeader({
   onNotificationPress,
   onProfilePress,
 }: HomeHeaderProps) {
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 12;
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: statusBarHeight + 12 }]}>
       <View style={styles.leftSection}>
         <Text style={styles.greetingText}>{greeting}</Text>
         <Text style={styles.userNameText} numberOfLines={1}>
@@ -53,9 +54,8 @@ export function HomeHeader({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#6B1D2A',
-    paddingTop: 16,
     paddingHorizontal: 20,
-    paddingBottom: 70, // Extra space so carousel overlaps header seamlessly
+    paddingBottom: 74, // Space for overlapping EventCarousel card
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#E2E8F0',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   userNameText: {
     fontSize: 22,
