@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import {
   ScrollView,
   LayoutAnimation,
   UIManager,
+  Dimensions,
+  PanResponder,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
@@ -27,7 +29,9 @@ import { GalleryCard, GalleryItemData } from '../../components/gallery/GalleryCa
 import { SkeletonItem } from '../../components/ui/SkeletonLoader';
 import { downloadCloudinaryImage, buildCloudinaryUrl } from '../../utils/cloudinary';
 
-// Enable LayoutAnimation for Android
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -47,15 +51,19 @@ export default function GalleryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [selectedPhoto, setSelectedPhoto] = useState<GalleryItemData | null>(null);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
 
+  // Full-Screen Image Swiper State
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const modalFlatListRef = useRef<FlatList>(null);
+
   // Smart Back Navigation Handler
   const handleBackNavigation = useCallback(() => {
-    if (selectedPhoto) {
-      setSelectedPhoto(null);
+    if (viewerVisible) {
+      setViewerVisible(false);
       return true;
     }
     if (isSearching) {
@@ -70,7 +78,7 @@ export default function GalleryScreen() {
       router.push('/(member)/home');
     }
     return true;
-  }, [selectedPhoto, isSearching, router]);
+  }, [viewerVisible, isSearching, router]);
 
   // Android Hardware Back Listener
   useEffect(() => {
@@ -202,6 +210,25 @@ export default function GalleryScreen() {
     }
   };
 
+  // Horizontal Swipe Gesture for Category Tab Switching (All -> Events -> Celebrations -> Others)
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 35 && Math.abs(gestureState.dy) < 30;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const currentIndex = CATEGORY_TABS.indexOf(activeCategory);
+        if (gestureState.dx < -50 && currentIndex < CATEGORY_TABS.length - 1) {
+          // Swipe Left -> Move to Next Tab
+          handleTabSwitch(CATEGORY_TABS[currentIndex + 1]);
+        } else if (gestureState.dx > 50 && currentIndex > 0) {
+          // Swipe Right -> Move to Previous Tab
+          handleTabSwitch(CATEGORY_TABS[currentIndex - 1]);
+        }
+      },
+    })
+  ).current;
+
   // Client-side filtering by category & search query
   const filteredGalleryItems = useMemo(() => {
     return allGalleryItems.filter((item) => {
@@ -225,7 +252,9 @@ export default function GalleryScreen() {
   }, [allGalleryItems, activeCategory, debouncedQuery]);
 
   const handleCardPress = (item: GalleryItemData) => {
-    setSelectedPhoto(item);
+    const idx = filteredGalleryItems.findIndex((g) => g.id === item.id);
+    setSelectedIndex(idx >= 0 ? idx : 0);
+    setViewerVisible(true);
   };
 
   const handleDownloadPhoto = async (photo: GalleryItemData) => {
@@ -237,6 +266,7 @@ export default function GalleryScreen() {
     }
   };
 
+  const currentPhoto = filteredGalleryItems[selectedIndex] || filteredGalleryItems[0];
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 12;
 
   return (
@@ -301,8 +331,8 @@ export default function GalleryScreen() {
         )}
       </View>
 
-      {/* Main Content Body */}
-      <View style={styles.body}>
+      {/* Main Content Body with Horizontal Tab Swipe Detector */}
+      <View style={styles.body} {...panResponder.panHandlers}>
         {/* Category Tab Segment Bar */}
         <View style={styles.tabBarContainer}>
           {CATEGORY_TABS.map((tab) => {
@@ -397,14 +427,19 @@ export default function GalleryScreen() {
         )}
       </View>
 
-      {/* Full-Screen High-Resolution Image Viewer Modal with Pinch-To-Zoom & Safe Top Padding */}
-      <Modal visible={Boolean(selectedPhoto)} transparent animationType="fade" onRequestClose={() => setSelectedPhoto(null)}>
+      {/* Full-Screen Gallery Image Swiper Modal with Horizontal Swipe & Working Pinch-to-Zoom */}
+      <Modal
+        visible={viewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewerVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <SafeAreaView style={styles.modalSafeArea}>
-            {/* Modal Header with Safe Inset Padding */}
+            {/* Modal Header with Safe Inset */}
             <View style={styles.modalHeaderRow}>
               <TouchableOpacity
-                onPress={() => setSelectedPhoto(null)}
+                onPress={() => setViewerVisible(false)}
                 style={styles.modalActionBtn}
                 hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
               >
@@ -412,11 +447,11 @@ export default function GalleryScreen() {
               </TouchableOpacity>
 
               <Text style={styles.modalTitleText} numberOfLines={1}>
-                {selectedPhoto?.title || 'Gallery Photo'}
+                {currentPhoto?.title || 'Gallery Photo'}
               </Text>
 
               <TouchableOpacity
-                onPress={() => selectedPhoto && handleDownloadPhoto(selectedPhoto)}
+                onPress={() => currentPhoto && handleDownloadPhoto(currentPhoto)}
                 style={styles.modalActionBtn}
                 hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
               >
@@ -424,38 +459,68 @@ export default function GalleryScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Pinch-To-Zoom Scrollable Container */}
-            {selectedPhoto && (
-              <ScrollView
-                style={styles.zoomScrollView}
-                contentContainerStyle={styles.zoomContentContainer}
-                maximumZoomScale={4}
-                minimumZoomScale={1}
-                showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
-                centerContent
-                pinchGestureEnabled
-              >
-                <Image
-                  source={{
-                    uri: buildCloudinaryUrl(selectedPhoto.imageUrl, {
-                      quality: 'auto',
-                      format: 'auto',
-                    }),
-                  }}
-                  style={styles.modalFullImage}
-                  resizeMode="contain"
-                />
-              </ScrollView>
-            )}
+            {/* Horizontal Paging Image Swiper (Google Photos style) */}
+            <FlatList
+              ref={modalFlatListRef}
+              data={filteredGalleryItems}
+              keyExtractor={(item) => item.id}
+              horizontal
+              pagingEnabled
+              initialScrollIndex={selectedIndex}
+              getItemLayout={(_, index) => ({
+                length: SCREEN_WIDTH,
+                offset: SCREEN_WIDTH * index,
+                index,
+              })}
+              onMomentumScrollEnd={(e) => {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+                setSelectedIndex(idx);
+              }}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <View style={styles.slideItem}>
+                  <ScrollView
+                    style={styles.zoomScrollView}
+                    contentContainerStyle={styles.zoomContentContainer}
+                    maximumZoomScale={4}
+                    minimumZoomScale={1}
+                    showsHorizontalScrollIndicator={false}
+                    showsVerticalScrollIndicator={false}
+                    centerContent
+                    pinchGestureEnabled
+                  >
+                    <Image
+                      source={{
+                        uri: buildCloudinaryUrl(item.imageUrl, {
+                          quality: 'auto',
+                          format: 'auto',
+                          width: 1200,
+                          height: 1200,
+                          crop: 'fit',
+                        }),
+                      }}
+                      style={styles.slideImage}
+                      resizeMode="contain"
+                    />
+                  </ScrollView>
+                </View>
+              )}
+            />
 
-            {/* Modal Footer Caption */}
-            {selectedPhoto && (
+            {/* Modal Footer Caption & Photo Index Counter */}
+            {currentPhoto && (
               <View style={styles.modalFooterBox}>
-                <Text style={styles.modalCaptionTitle}>{selectedPhoto.title}</Text>
+                <View style={styles.footerRow}>
+                  <Text style={styles.modalCaptionTitle} numberOfLines={1}>
+                    {currentPhoto.title}
+                  </Text>
+                  <Text style={styles.counterText}>
+                    {selectedIndex + 1} / {filteredGalleryItems.length}
+                  </Text>
+                </View>
                 <View style={styles.badgeRow}>
                   <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryBadgeText}>{selectedPhoto.category}</Text>
+                    <Text style={styles.categoryBadgeText}>{currentPhoto.category}</Text>
                   </View>
                 </View>
               </View>
@@ -624,7 +689,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  /* Modal Safe Area & Pinch-To-Zoom Styling */
+  /* Modal Safe Area & Pinch-To-Zoom Paging Swiper Styling */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.96)',
@@ -656,28 +721,46 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: 12,
   },
+  slideItem: {
+    width: SCREEN_WIDTH,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   zoomScrollView: {
-    flex: 1,
-    width: '100%',
+    width: SCREEN_WIDTH,
+    height: '100%',
   },
   zoomContentContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalFullImage: {
-    width: '100%',
-    height: '100%',
+  slideImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.7,
   },
   modalFooterBox: {
     padding: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   modalCaptionTitle: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginRight: 10,
+  },
+  counterText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#E2E8F0',
   },
   badgeRow: {
     flexDirection: 'row',

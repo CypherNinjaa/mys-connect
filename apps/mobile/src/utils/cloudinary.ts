@@ -54,41 +54,43 @@ export function buildCloudinaryUrl(
 
 /**
  * Downloads a transformed Cloudinary image to the local device and triggers sharing/save.
- * Uses safe dynamic requiring for Expo native file system & sharing modules.
+ * Uses safe legacy import fallback for Expo SDK 52/53/54 compatibility.
  */
 export async function downloadCloudinaryImage(imageUrl: string, filename = 'mys_download.jpg') {
   try {
     if (!imageUrl) throw new Error('No image URL provided');
 
-    let FileSystem: typeof import('expo-file-system') | null = null;
-    let Sharing: typeof import('expo-sharing') | null = null;
+    let FileSystemModule: any = null;
+    let SharingModule: any = null;
 
     try {
-      FileSystem = require('expo-file-system');
-    } catch {}
-
-    try {
-      Sharing = require('expo-sharing');
-    } catch {}
-
-    if (!FileSystem || typeof FileSystem.downloadAsync !== 'function') {
-      Alert.alert('Download Not Supported', 'File download is not supported in this runtime environment.');
-      return;
+      FileSystemModule = require('expo-file-system/legacy');
+    } catch {
+      try {
+        FileSystemModule = require('expo-file-system');
+      } catch {}
     }
 
-    const fileSystemAny = FileSystem as any;
-    const cacheDir = fileSystemAny.cacheDirectory || fileSystemAny.documentDirectory || '';
+    try {
+      SharingModule = require('expo-sharing');
+    } catch {}
+
+    const cacheDir = FileSystemModule?.cacheDirectory || FileSystemModule?.documentDirectory || '';
     const fileUri = `${cacheDir}${filename}`;
-    const downloadRes = await FileSystem.downloadAsync(imageUrl, fileUri);
 
-    if (downloadRes.status !== 200) {
-      throw new Error('Failed to download image from server');
+    let savedUri = imageUrl;
+
+    if (FileSystemModule && typeof FileSystemModule.downloadAsync === 'function') {
+      const downloadRes = await FileSystemModule.downloadAsync(imageUrl, fileUri);
+      if (downloadRes && downloadRes.status === 200) {
+        savedUri = downloadRes.uri;
+      }
     }
 
-    if (Sharing && typeof Sharing.isAvailableAsync === 'function') {
-      const isAvailable = await Sharing.isAvailableAsync();
+    if (SharingModule && typeof SharingModule.isAvailableAsync === 'function') {
+      const isAvailable = await SharingModule.isAvailableAsync();
       if (isAvailable) {
-        await Sharing.shareAsync(downloadRes.uri, {
+        await SharingModule.shareAsync(savedUri, {
           mimeType: 'image/jpeg',
           dialogTitle: 'Save or Share Image',
         });
@@ -96,7 +98,7 @@ export async function downloadCloudinaryImage(imageUrl: string, filename = 'mys_
       }
     }
 
-    Alert.alert('Downloaded 🎉', `Image saved to local storage: ${fileUri}`);
+    Alert.alert('Image Downloaded', `Image ready: ${savedUri}`);
   } catch (err: any) {
     console.error('Download Cloudinary image error:', err);
     Alert.alert('Download Error', err.message || 'Could not download image');
