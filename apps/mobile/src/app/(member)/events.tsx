@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,12 @@ import {
   Alert,
   Platform,
   BackHandler,
-  ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiService } from '../../services/api';
+import { EventCacheManager } from '../../services/eventCacheManager';
 import { EventCard, EventItemData } from '../../components/events/EventCard';
 import { EventCardSkeleton } from '../../components/ui/SkeletonLoader';
 
@@ -34,16 +34,15 @@ export default function EventsScreen() {
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabStatus>('UPCOMING');
-  const [events, setEvents] = useState<EventItemData[]>([]);
+  const [allEvents, setAllEvents] = useState<EventItemData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
   const [registeringEventId, setRegisteringEventId] = useState<string | null>(null);
 
   // Android Hardware Back Navigation Handler
@@ -52,6 +51,7 @@ export default function EventsScreen() {
       if (isSearching) {
         setIsSearching(false);
         setSearchQuery('');
+        setDebouncedQuery('');
         return true;
       }
       if (router.canGoBack()) {
@@ -65,62 +65,109 @@ export default function EventsScreen() {
     return () => subscription.remove();
   }, [isSearching, router]);
 
-  const fetchEventsData = useCallback(
-    async (targetPage = 1, isRefresh = false, search = searchQuery) => {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else if (targetPage === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
+  // Debounce search query (300ms) to avoid unnecessary operations
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-      setHasError(false);
-      setErrorMessage(null);
-
-      try {
-        const token = (await getToken()) || undefined;
-        const res = await ApiService.getEvents(token, activeTab, search, targetPage, 10);
-
-        if (res && res.events) {
-          if (targetPage === 1) {
-            setEvents(res.events);
-          } else {
-            setEvents((prev) => [...prev, ...res.events]);
-          }
-          setPage(targetPage);
-          setHasMore(Boolean(res.pagination?.hasMore));
-        } else {
-          if (targetPage === 1) setEvents([]);
-          setHasMore(false);
-        }
-      } catch (err: any) {
-        console.error('Fetch events error:', err);
-        setHasError(true);
-        setErrorMessage(err.message || 'Could not load events from server');
-        if (targetPage === 1) setEvents([]);
-      } finally {
+  // Initial Load & Cache Retrieval
+  const loadEventsData = useCallback(async (isForceRefresh = false) => {
+    // 1. Check local cache first if not forcing refresh
+    if (!isForceRefresh) {
+      const cached = EventCacheManager.getCachedEvents();
+      if (cached && cached.length > 0) {
+        setAllEvents(cached);
         setLoading(false);
         setRefreshing(false);
-        setLoadingMore(false);
+        return;
       }
-    },
-    [activeTab, searchQuery, getToken]
-  );
+    }
+
+    // 2. Fetch all events from API server once
+    if (isForceRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    setHasError(false);
+    setErrorMessage(null);
+    setCooldownMessage(null);
+
+    try {
+      const token = (await getToken()) || undefined;
+      // Fetch up to 50 events across all statuses at once for client-side caching & instant tab filtering
+      const res = await ApiService.getEvents(token, undefined, undefined, 1, 50);
+
+      if (res && Array.isArray(res.events)) {
+        setAllEvents(res.events);
+        EventCacheManager.setCachedEvents(res.events);
+      } else {
+        setAllEvents([]);
+      }
+    } catch (err: any) {
+      console.error('Fetch events error:', err);
+      setHasError(true);
+      setErrorMessage(err.message || 'Could not load events from server');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [getToken]);
 
   useEffect(() => {
-    void fetchEventsData(1, false, searchQuery);
-  }, [activeTab, searchQuery]);
+    void loadEventsData(false);
+  }, [loadEventsData]);
 
+  // Rate-Limited Manual Pull-to-Refresh
   const handleRefresh = () => {
-    void fetchEventsData(1, true, searchQuery);
+    const { allowed, remainingSeconds } = EventCacheManager.canManualRefresh();
+    if (!allowed) {
+      setRefreshing(false);
+      setCooldownMessage(`Already up to date. Please wait ${remainingSeconds}s before refreshing again.`);
+      setTimeout(() => setCooldownMessage(null), 3000);
+      return;
+    }
+
+    EventCacheManager.recordManualRefresh();
+    void loadEventsData(true);
   };
 
-  const handleLoadMore = () => {
-    if (!loading && !loadingMore && hasMore) {
-      void fetchEventsData(page + 1, false, searchQuery);
-    }
-  };
+  // Client-side filtering by active tab and search query (0 API requests)
+  const filteredEvents = useMemo(() => {
+    const now = new Date();
+
+    return allEvents.filter((evt) => {
+      const startDate = new Date(evt.startDate);
+      const endDate = evt.endDate ? new Date(evt.endDate) : new Date(startDate.getTime() + 4 * 60 * 60 * 1000);
+
+      // Status Filter
+      let matchesTab = false;
+      if (activeTab === 'UPCOMING') {
+        matchesTab = startDate >= now && evt.status !== 'COMPLETED';
+      } else if (activeTab === 'ONGOING') {
+        matchesTab = startDate <= now && endDate >= now && evt.status !== 'COMPLETED';
+      } else if (activeTab === 'COMPLETED') {
+        matchesTab = endDate < now || evt.status === 'COMPLETED';
+      }
+
+      if (!matchesTab) return false;
+
+      // Search Query Filter
+      if (debouncedQuery.trim()) {
+        const q = debouncedQuery.trim().toLowerCase();
+        const titleMatch = evt.title?.toLowerCase().includes(q);
+        const venueMatch = evt.venue?.toLowerCase().includes(q);
+        const cityMatch = evt.city?.name?.toLowerCase().includes(q);
+        return titleMatch || venueMatch || cityMatch;
+      }
+
+      return true;
+    });
+  }, [allEvents, activeTab, debouncedQuery]);
 
   // Optimistic Registration Toggle
   const handleRegisterToggle = async (event: EventItemData) => {
@@ -132,10 +179,13 @@ export default function EventsScreen() {
     const newStatus = !event.isRegistered;
     setRegisteringEventId(event.id);
 
-    // Optimistic Update
-    setEvents((prev) =>
+    // 1. Optimistically update local UI state
+    setAllEvents((prev) =>
       prev.map((e) => (e.id === event.id ? { ...e, isRegistered: newStatus } : e))
     );
+
+    // 2. Optimistically update Cache
+    EventCacheManager.updateRegistrationInCache(event.id, newStatus);
 
     try {
       const token = await getToken();
@@ -151,9 +201,10 @@ export default function EventsScreen() {
     } catch (err: any) {
       console.error('Registration toggle error:', err);
       // Revert Optimistic Update on failure
-      setEvents((prev) =>
+      setAllEvents((prev) =>
         prev.map((e) => (e.id === event.id ? { ...e, isRegistered: !newStatus } : e))
       );
+      EventCacheManager.updateRegistrationInCache(event.id, !newStatus);
       Alert.alert('Registration Error', err.message || 'Action failed. Please try again.');
     } finally {
       setRegisteringEventId(null);
@@ -181,7 +232,15 @@ export default function EventsScreen() {
 
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => setIsSearching((prev) => !prev)}
+            onPress={() => {
+              if (isSearching) {
+                setIsSearching(false);
+                setSearchQuery('');
+                setDebouncedQuery('');
+              } else {
+                setIsSearching(true);
+              }
+            }}
             activeOpacity={0.7}
           >
             <Ionicons name={isSearching ? 'close' : 'search'} size={24} color="#FFFFFF" />
@@ -194,14 +253,19 @@ export default function EventsScreen() {
             <Ionicons name="search-outline" size={18} color="#718096" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search by event title or venue..."
+              placeholder="Search by title or venue..."
               placeholderTextColor="#A0AEC0"
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoFocus
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
+                  setDebouncedQuery('');
+                }}
+              >
                 <Ionicons name="close-circle" size={18} color="#A0AEC0" />
               </TouchableOpacity>
             )}
@@ -222,7 +286,6 @@ export default function EventsScreen() {
                 onPress={() => {
                   if (activeTab !== tab.status) {
                     setActiveTab(tab.status);
-                    setSearchQuery('');
                   }
                 }}
                 activeOpacity={0.8}
@@ -236,9 +299,21 @@ export default function EventsScreen() {
           })}
         </View>
 
+        {/* Refresh Cooldown Notification Toast */}
+        {cooldownMessage && (
+          <View style={styles.cooldownBanner}>
+            <Ionicons name="information-circle" size={18} color="#2B6CB0" style={{ marginRight: 6 }} />
+            <Text style={styles.cooldownText}>{cooldownMessage}</Text>
+          </View>
+        )}
+
         {/* Error Banner with Retry Button */}
         {hasError && (
-          <TouchableOpacity style={styles.errorBanner} onPress={handleRefresh} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.errorBanner}
+            onPress={() => loadEventsData(true)}
+            activeOpacity={0.8}
+          >
             <Ionicons name="alert-circle-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
             <View style={{ flex: 1 }}>
               <Text style={styles.errorBannerTitle}>Unable to load events</Text>
@@ -250,7 +325,7 @@ export default function EventsScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Loading Skeletons */}
+        {/* Loading Skeletons on initial fetch */}
         {loading ? (
           <View style={styles.skeletonList}>
             <EventCardSkeleton />
@@ -259,7 +334,7 @@ export default function EventsScreen() {
           </View>
         ) : (
           <FlatList
-            data={events}
+            data={filteredEvents}
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
@@ -271,27 +346,14 @@ export default function EventsScreen() {
                 tintColor="#6B1D2A"
               />
             }
-            onEndReached={handleLoadMore}
-            onEndReachedThreshold={0.4}
             renderItem={({ item }) => (
               <EventCard
                 event={item}
                 activeTab={activeTab}
                 onRegisterToggle={handleRegisterToggle}
                 isRegistering={registeringEventId === item.id}
-                onPress={() => {
-                  // Route to details if available
-                }}
               />
             )}
-            ListFooterComponent={
-              loadingMore ? (
-                <View style={styles.loadingMoreBox}>
-                  <ActivityIndicator color="#6B1D2A" size="small" />
-                  <Text style={styles.loadingMoreText}>Loading more events...</Text>
-                </View>
-              ) : null
-            }
             ListEmptyComponent={
               !hasError ? (
                 <View style={styles.emptyStateBox}>
@@ -300,8 +362,8 @@ export default function EventsScreen() {
                     No {activeTab.toLowerCase()} events found
                   </Text>
                   <Text style={styles.emptySub}>
-                    {searchQuery
-                      ? `No events matching "${searchQuery}".`
+                    {debouncedQuery
+                      ? `No events matching "${debouncedQuery}".`
                       : `There are currently no ${activeTab.toLowerCase()} community events.`}
                   </Text>
                 </View>
@@ -405,6 +467,22 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 40,
   },
+  cooldownBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF8FF',
+    borderWidth: 1,
+    borderColor: '#BEE3F8',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  cooldownText: {
+    fontSize: 12.5,
+    color: '#2B6CB0',
+    fontWeight: '600',
+    flex: 1,
+  },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -424,18 +502,6 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     color: '#C53030',
     marginTop: 2,
-  },
-  loadingMoreBox: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 16,
-    gap: 8,
-  },
-  loadingMoreText: {
-    fontSize: 13,
-    color: '#718096',
-    fontWeight: '600',
   },
   emptyStateBox: {
     backgroundColor: '#FFFFFF',

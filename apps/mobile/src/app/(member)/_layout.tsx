@@ -70,7 +70,7 @@ export default function MemberLayout() {
       <Tabs.Screen
         name="events"
         options={{
-          title: 'Events',
+          headerShown: false,
           tabBarLabel: 'Events',
           tabBarIcon: ({ color }) => <Ionicons name="calendar-outline" size={22} color={color} />,
         }}
