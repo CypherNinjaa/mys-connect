@@ -64,7 +64,7 @@ export default function HomeScreen() {
                   })
                 : '15 August 2026',
               venue: evt.venue || 'Shree Maheshwari Bhawan, Jaipur',
-              image: evt.bannerUrl || mockFeatured[0].image,
+              image: evt.coverImageUrl || evt.bannerUrl || mockFeatured[0].image,
               actionText: 'Register Now',
             }));
 
