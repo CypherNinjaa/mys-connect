@@ -1,5 +1,3 @@
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { Alert } from 'react-native';
 
 export interface CloudinaryTransformOptions {
@@ -56,10 +54,27 @@ export function buildCloudinaryUrl(
 
 /**
  * Downloads a transformed Cloudinary image to the local device and triggers sharing/save.
+ * Uses safe dynamic requiring for Expo native file system & sharing modules.
  */
 export async function downloadCloudinaryImage(imageUrl: string, filename = 'mys_download.jpg') {
   try {
     if (!imageUrl) throw new Error('No image URL provided');
+
+    let FileSystem: typeof import('expo-file-system') | null = null;
+    let Sharing: typeof import('expo-sharing') | null = null;
+
+    try {
+      FileSystem = require('expo-file-system');
+    } catch {}
+
+    try {
+      Sharing = require('expo-sharing');
+    } catch {}
+
+    if (!FileSystem || typeof FileSystem.downloadAsync !== 'function') {
+      Alert.alert('Download Not Supported', 'File download is not supported in this runtime environment.');
+      return;
+    }
 
     const fileSystemAny = FileSystem as any;
     const cacheDir = fileSystemAny.cacheDirectory || fileSystemAny.documentDirectory || '';
@@ -70,15 +85,18 @@ export async function downloadCloudinaryImage(imageUrl: string, filename = 'mys_
       throw new Error('Failed to download image from server');
     }
 
-    const isAvailable = await Sharing.isAvailableAsync();
-    if (isAvailable) {
-      await Sharing.shareAsync(downloadRes.uri, {
-        mimeType: 'image/jpeg',
-        dialogTitle: 'Save or Share Image',
-      });
-    } else {
-      Alert.alert('Downloaded', `Image saved to device cache`);
+    if (Sharing && typeof Sharing.isAvailableAsync === 'function') {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(downloadRes.uri, {
+          mimeType: 'image/jpeg',
+          dialogTitle: 'Save or Share Image',
+        });
+        return;
+      }
     }
+
+    Alert.alert('Downloaded 🎉', `Image saved to local storage: ${fileUri}`);
   } catch (err: any) {
     console.error('Download Cloudinary image error:', err);
     Alert.alert('Download Error', err.message || 'Could not download image');
