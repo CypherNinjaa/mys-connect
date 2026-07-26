@@ -183,12 +183,12 @@ export default function HomeScreen() {
     router.push(item.route as any);
   };
 
-  const handleRegisterPress = (_event: FeaturedEvent) => {
-    router.push('/(member)/events');
+  const handleRegisterPress = (event: FeaturedEvent) => {
+    router.push(`/(member)/event-detail?id=${event.id}`);
   };
 
-  const handleUpcomingEventPress = (_event: UpcomingEvent) => {
-    router.push('/(member)/events');
+  const handleUpcomingEventPress = (event: UpcomingEvent) => {
+    router.push(`/(member)/event-detail?id=${event.id}`);
   };
 
   const handleViewAllEvents = () => {

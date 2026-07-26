@@ -89,10 +89,7 @@ export default function SignInScreen() {
   };
 
   const handleGuestMode = () => {
-    Alert.alert(
-      'Guest mode is coming soon',
-      'Guest browsing is not available in this build. Please register or sign in to continue.',
-    );
+    router.replace('/(guest)/home');
   };
 
   const isLoading = isSubmitting || fetchStatus === 'fetching';

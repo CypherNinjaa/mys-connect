@@ -17,7 +17,7 @@ import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
 import { MemberCardSkeleton } from '../../components/ui/SkeletonLoader';
 
-const CITIES = ['All', 'Jaipur', 'Jodhpur', 'Kota', 'Udaipur', 'Ranchi'];
+const DEFAULT_CITIES = ['All'];
 
 export default function MemberDirectoryScreen() {
   const { getToken, isSignedIn } = useAuth();
@@ -25,6 +25,7 @@ export default function MemberDirectoryScreen() {
   const [search, setSearch] = useState('');
   const [activeCity, setActiveCity] = useState('All');
   const [members, setMembers] = useState<any[]>([]);
+  const [cities, setCities] = useState<string[]>(DEFAULT_CITIES);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -41,6 +42,15 @@ export default function MemberDirectoryScreen() {
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => subscription.remove();
   }, [router]);
+
+  useEffect(() => {
+    ApiService.getCities()
+      .then((data: any[]) => {
+        const names = data.map((c: any) => c.name || c);
+        setCities(['All', ...names]);
+      })
+      .catch(() => {});
+  }, []);
 
   const fetchMembers = async () => {
     try {
@@ -90,7 +100,7 @@ export default function MemberDirectoryScreen() {
       {/* City Filter Chips — Wireframe 04 */}
       <View style={styles.cityChipsContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cityChipsScroll}>
-          {CITIES.map((city) => (
+          {cities.map((city) => (
             <TouchableOpacity
               key={city}
               style={[styles.cityChip, activeCity === city && styles.cityChipActive]}
@@ -124,7 +134,12 @@ export default function MemberDirectoryScreen() {
             const occupation = profile?.occupation || 'Member';
 
             return (
-              <View key={member.id} style={styles.memberCard}>
+              <TouchableOpacity
+                key={member.id}
+                style={styles.memberCard}
+                onPress={() => router.push(`/(member)/member-detail?id=${member.id}`)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.avatarCircle}>
                   {member.avatarUrl ? (
                     <Image source={{ uri: member.avatarUrl }} style={styles.avatarImage} />
@@ -144,7 +159,7 @@ export default function MemberDirectoryScreen() {
                 </View>
 
                 <Ionicons name="chevron-forward" size={18} color="#A0AEC0" />
-              </View>
+              </TouchableOpacity>
             );
           })
         ) : (

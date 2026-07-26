@@ -378,7 +378,7 @@ export default function ProfileScreen() {
         {/* 5. Downloads */}
         <TouchableOpacity
           style={styles.menuRow}
-          onPress={() => Alert.alert('Downloads', 'No downloadable documents available at this time.')}
+          onPress={() => router.push('/(member)/downloads')}
         >
           <View style={styles.menuIconCircle}>
             <Ionicons name="cloud-download-outline" size={20} color={Colors.primary[500]} />
@@ -386,6 +386,21 @@ export default function ProfileScreen() {
           <View style={styles.menuTextContent}>
             <Text style={styles.menuTitle}>Downloads</Text>
             <Text style={styles.menuSub}>Forms & ID Documents</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
+        </TouchableOpacity>
+
+        {/* 6. Settings */}
+        <TouchableOpacity
+          style={[styles.menuRow, { borderBottomWidth: 0 }]}
+          onPress={() => router.push('/(member)/settings')}
+        >
+          <View style={styles.menuIconCircle}>
+            <Ionicons name="settings-outline" size={20} color={Colors.primary[500]} />
+          </View>
+          <View style={styles.menuTextContent}>
+            <Text style={styles.menuTitle}>Settings</Text>
+            <Text style={styles.menuSub}>About, Privacy, Support</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
         </TouchableOpacity>

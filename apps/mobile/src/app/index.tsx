@@ -23,13 +23,14 @@ export default function SplashScreen() {
   const router = useRouter();
   const [loadingText, setLoadingText] = useState('Verifying Credentials...');
 
+  const metadataStatus = (clerkUser?.publicMetadata as any)?.status as string | undefined;
+
   useEffect(() => {
     let isMounted = true;
 
     async function checkAuthAndRedirect() {
       if (!isLoaded) return;
 
-      // PRD FR-SPLASH-001 requires the brand splash for at least two seconds.
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       if (!isSignedIn) {
@@ -46,7 +47,6 @@ export default function SplashScreen() {
           return;
         }
 
-        // Try backend check with 5s timeout safety
         let dbUser = null;
         try {
           dbUser = await Promise.race([
@@ -70,11 +70,9 @@ export default function SplashScreen() {
             router.replace('/(member)/home');
           }
         } else {
-          // Metadata fallback
-          const metadata: any = clerkUser?.publicMetadata || {};
-          if (metadata.status === 'DEACTIVATED' || metadata.status === 'REJECTED') {
+          if (metadataStatus === 'DEACTIVATED' || metadataStatus === 'REJECTED') {
             router.replace('/(auth)/deactivated');
-          } else if (metadata.status === 'PENDING') {
+          } else if (metadataStatus === 'PENDING') {
             router.replace('/(auth)/pending-approval');
           } else {
             router.replace('/(member)/home');
@@ -91,7 +89,7 @@ export default function SplashScreen() {
     return () => {
       isMounted = false;
     };
-  }, [clerkUser?.publicMetadata, getToken, isLoaded, isSignedIn, router]);
+  }, [metadataStatus, getToken, isLoaded, isSignedIn, router]);
 
   return (
     <SafeAreaView style={styles.container}>

@@ -12,6 +12,7 @@ import {
   Alert,
   BackHandler,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser, useSignIn } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ export default function ChangePasswordScreen() {
   const { getToken } = useAuth();
   const { signIn } = useSignIn();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // Android Hardware Back Navigation Handler
   useEffect(() => {
@@ -198,7 +200,7 @@ export default function ChangePasswordScreen() {
   return (
     <View style={styles.container}>
       {/* Header bar */}
-      <View style={styles.headerBar}>
+      <View style={[styles.headerBar, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.text.primary} />
         </TouchableOpacity>
@@ -416,7 +418,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     paddingHorizontal: Spacing.md,
-    paddingTop: 44,
+    paddingTop: 10,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#EDF2F7',

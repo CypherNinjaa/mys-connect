@@ -1,5 +1,8 @@
 import { API } from '../constants/theme';
 
+const DEFAULT_TIMEOUT = 15000; // 15 seconds
+const UPLOAD_TIMEOUT = 60000; // 60 seconds for uploads
+
 export interface RegisterProfileData {
   firstName: string;
   lastName: string;
@@ -14,6 +17,12 @@ export interface RegisterProfileData {
   organization?: string;
   designation?: string;
   bio?: string;
+}
+
+function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = DEFAULT_TIMEOUT): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
 }
 
 export class ApiService {
@@ -31,7 +40,7 @@ export class ApiService {
    * Fetch current authenticated user DB profile & approval status
    */
   static async getMe(token: string) {
-    const res = await fetch(`${API.baseUrl}/users/me`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/users/me`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -46,7 +55,7 @@ export class ApiService {
    * Submit complete member registration
    */
   static async registerProfile(token: string, profileData: RegisterProfileData) {
-    const res = await fetch(`${API.baseUrl}/users/register`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/users/register`, {
       method: 'POST',
       headers: await this.getHeaders(token),
       body: JSON.stringify(profileData),
@@ -93,11 +102,11 @@ export class ApiService {
       }
     }
 
-    const res = await fetch(`${API.baseUrl}/users/avatar`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/users/avatar`, {
       method: 'POST',
       headers,
       body: bodyData,
-    });
+    }, UPLOAD_TIMEOUT);
 
     const data = await res.json();
     if (!res.ok) {
@@ -110,7 +119,7 @@ export class ApiService {
    * Fetch list of active cities for location dropdown
    */
   static async getCities() {
-    const res = await fetch(`${API.baseUrl}/users/cities`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/users/cities`, {
       method: 'GET',
       headers: await this.getHeaders(),
     });
@@ -130,7 +139,7 @@ export class ApiService {
     if (cityName && cityName !== 'All') params.append('cityName', cityName);
     params.append('page', String(page));
 
-    const res = await fetch(`${API.baseUrl}/members?${params.toString()}`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/members?${params.toString()}`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -141,7 +150,7 @@ export class ApiService {
 
   static async getMemberById(token?: string, id?: string) {
     if (!id) return null;
-    const res = await fetch(`${API.baseUrl}/members/${id}`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/members/${id}`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -160,7 +169,7 @@ export class ApiService {
     params.append('page', String(page));
     params.append('limit', String(limit));
 
-    const res = await fetch(`${API.baseUrl}/events?${params.toString()}`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/events?${params.toString()}`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -171,7 +180,7 @@ export class ApiService {
 
   static async getEventById(token?: string, id?: string) {
     if (!id) return null;
-    const res = await fetch(`${API.baseUrl}/events/${id}`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/events/${id}`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -181,7 +190,7 @@ export class ApiService {
   }
 
   static async registerForEvent(token: string, eventId: string) {
-    const res = await fetch(`${API.baseUrl}/events/${eventId}/register`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/events/${eventId}/register`, {
       method: 'POST',
       headers: await this.getHeaders(token),
     });
@@ -191,7 +200,7 @@ export class ApiService {
   }
 
   static async cancelEventRegistration(token: string, eventId: string) {
-    const res = await fetch(`${API.baseUrl}/events/${eventId}/register`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/events/${eventId}/register`, {
       method: 'DELETE',
       headers: await this.getHeaders(token),
     });
@@ -207,7 +216,7 @@ export class ApiService {
     const params = new URLSearchParams();
     if (category && category !== 'ALL') params.append('category', category);
 
-    const res = await fetch(`${API.baseUrl}/notices?${params.toString()}`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/notices?${params.toString()}`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -226,7 +235,7 @@ export class ApiService {
     params.append('page', String(page));
     params.append('limit', String(limit));
 
-    const res = await fetch(`${API.baseUrl}/gallery?${params.toString()}`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/gallery?${params.toString()}`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -236,7 +245,7 @@ export class ApiService {
   }
 
   static async getAlbums(token: string) {
-    const res = await fetch(`${API.baseUrl}/gallery/albums`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/gallery/albums`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -246,7 +255,7 @@ export class ApiService {
   }
 
   static async getAlbumById(token: string, id: string) {
-    const res = await fetch(`${API.baseUrl}/gallery/albums/${id}`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/gallery/albums/${id}`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -259,7 +268,7 @@ export class ApiService {
    * Notifications API
    */
   static async getNotifications(token: string) {
-    const res = await fetch(`${API.baseUrl}/notifications`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/notifications`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -269,7 +278,7 @@ export class ApiService {
   }
 
   static async getUnreadNotificationCount(token: string) {
-    const res = await fetch(`${API.baseUrl}/notifications/unread-count`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/notifications/unread-count`, {
       method: 'GET',
       headers: await this.getHeaders(token),
     });
@@ -279,7 +288,7 @@ export class ApiService {
   }
 
   static async markNotificationRead(token: string, id: string) {
-    const res = await fetch(`${API.baseUrl}/notifications/${id}/read`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/notifications/${id}/read`, {
       method: 'PATCH',
       headers: await this.getHeaders(token),
     });
@@ -289,7 +298,7 @@ export class ApiService {
   }
 
   static async markAllNotificationsRead(token: string) {
-    const res = await fetch(`${API.baseUrl}/notifications/read-all`, {
+    const res = await fetchWithTimeout(`${API.baseUrl}/notifications/read-all`, {
       method: 'PATCH',
       headers: await this.getHeaders(token),
     });

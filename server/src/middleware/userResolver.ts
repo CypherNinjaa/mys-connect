@@ -49,10 +49,10 @@ export const userResolver = async (
       throw new AppError('Your account has been deactivated or rejected by administration.', 403);
     }
 
-    // Attach to Request
-    (req as any).user = user;
-    (req as any).userRole = user.role;
-    (req as any).userStatus = user.status;
+    // Attach to Request (typed via src/types/express.d.ts)
+    req.user = user;
+    req.userRole = user.role;
+    req.userStatus = user.status;
 
     next();
   } catch (error) {

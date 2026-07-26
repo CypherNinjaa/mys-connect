@@ -1,10 +1,7 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-/**
- * Single Source of Truth for Mobile -> Backend Network Configuration
- */
 const getDevHostIp = (): string => {
-  // 1. Try to extract Metro Bundler Host IP (e.g. 192.168.1.4:8081)
   const hostUri =
     Constants.expoConfig?.hostUri ||
     (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
@@ -17,8 +14,7 @@ const getDevHostIp = (): string => {
     }
   }
 
-  // 2. Primary local network IP for physical devices (Realme RMX3785) & Wi-Fi
-  return '192.168.1.4';
+  return Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
 };
 
 const DEV_IP = getDevHostIp();
