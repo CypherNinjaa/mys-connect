@@ -38,7 +38,7 @@ const GENDERS = [
   { label: 'Other', value: 'OTHER' },
 ];
 
-export default function ProfileScreen() {
+export function ProfileScreen() {
   const { getToken, isSignedIn, signOut } = useAuth();
   const router = useRouter();
 
@@ -124,10 +124,18 @@ export default function ProfileScreen() {
     }
   };
 
-  // Realtime GPS Location Fetch
+  // Realtime GPS Location Fetch with Native Module Safety Guard
   const handleFetchCurrentLocation = async () => {
     try {
       setIsLocating(true);
+      if (!Location || typeof Location.requestForegroundPermissionsAsync !== 'function') {
+        Alert.alert(
+          'Location Module Native Setup',
+          'Expo Location native plugin added. Rebuilding Android dev client...'
+        );
+        return;
+      }
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Permission to access GPS location was denied.');
@@ -338,10 +346,10 @@ export default function ProfileScreen() {
         <Text style={styles.signOutBtnText}>Sign Out Account</Text>
       </TouchableOpacity>
 
-      {/* Edit Profile Section Modal with KeyboardAvoidingView Fix */}
+      {/* Edit Profile Section Modal with KeyboardAvoidingView Fix for Android & iOS */}
       <Modal visible={Boolean(activeModal)} animationType="slide" transparent={true}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
           <View style={styles.modalSheet}>
@@ -362,7 +370,12 @@ export default function ProfileScreen() {
               </View>
             )}
 
-            <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              style={styles.formScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 24 }}
+            >
               {activeModal === 'PERSONAL' && (
                 <>
                   <View style={styles.inputGroup}>
@@ -488,6 +501,8 @@ export default function ProfileScreen() {
     </ScrollView>
   );
 }
+
+export default ProfileScreen;
 
 const styles = StyleSheet.create({
   container: {
