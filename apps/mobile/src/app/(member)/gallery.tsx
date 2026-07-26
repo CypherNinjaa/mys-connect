@@ -10,15 +10,10 @@ import {
   SafeAreaView,
   StatusBar,
   Modal,
-  Image,
   Platform,
   BackHandler,
   Alert,
-  ScrollView,
-  LayoutAnimation,
-  UIManager,
   Dimensions,
-  PanResponder,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
@@ -28,13 +23,9 @@ import { GalleryCacheManager } from '../../services/galleryCacheManager';
 import { GalleryCard, GalleryItemData } from '../../components/gallery/GalleryCard';
 import { SkeletonItem } from '../../components/ui/SkeletonLoader';
 import { downloadCloudinaryImage, buildCloudinaryUrl } from '../../utils/cloudinary';
+import { PinchZoomImage } from '../../components/ui/PinchZoomImage';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type CategoryTab = 'All' | 'Events' | 'Celebrations' | 'Others';
 
@@ -44,7 +35,7 @@ export default function GalleryScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
 
-  const [activeCategory, setActiveCategory] = useState<CategoryTab>('All');
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
   const [allGalleryItems, setAllGalleryItems] = useState<GalleryItemData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,10 +46,14 @@ export default function GalleryScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
 
-  // Full-Screen Image Swiper State
+  // Full-Screen Viewer State
   const [viewerVisible, setViewerVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const categoryPagerRef = useRef<FlatList>(null);
   const modalFlatListRef = useRef<FlatList>(null);
+
+  const activeCategory = CATEGORY_TABS[activeCategoryIndex] || 'All';
 
   // Smart Back Navigation Handler
   const handleBackNavigation = useCallback(() => {
@@ -202,57 +197,43 @@ export default function GalleryScreen() {
     void loadGalleryData(true);
   };
 
-  // Smooth Category Tab Switch Handler
-  const handleTabSwitch = (tab: CategoryTab) => {
-    if (activeCategory !== tab) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setActiveCategory(tab);
-    }
+  // Switch category tab index cleanly
+  const handleTabClick = (index: number) => {
+    setActiveCategoryIndex(index);
+    categoryPagerRef.current?.scrollToIndex({ index, animated: true });
   };
 
-  // Horizontal Swipe Gesture for Category Tab Switching (All -> Events -> Celebrations -> Others)
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 35 && Math.abs(gestureState.dy) < 30;
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        const currentIndex = CATEGORY_TABS.indexOf(activeCategory);
-        if (gestureState.dx < -50 && currentIndex < CATEGORY_TABS.length - 1) {
-          // Swipe Left -> Move to Next Tab
-          handleTabSwitch(CATEGORY_TABS[currentIndex + 1]);
-        } else if (gestureState.dx > 50 && currentIndex > 0) {
-          // Swipe Right -> Move to Previous Tab
-          handleTabSwitch(CATEGORY_TABS[currentIndex - 1]);
+  // Helper to filter items for any specific category
+  const getFilteredItemsForCategory = useCallback(
+    (category: CategoryTab) => {
+      return allGalleryItems.filter((item) => {
+        let matchesCategory = true;
+        if (category !== 'All') {
+          matchesCategory = item.category?.toLowerCase() === category.toLowerCase();
         }
-      },
-    })
-  ).current;
 
-  // Client-side filtering by category & search query
-  const filteredGalleryItems = useMemo(() => {
-    return allGalleryItems.filter((item) => {
-      let matchesCategory = true;
-      if (activeCategory !== 'All') {
-        matchesCategory = item.category?.toLowerCase() === activeCategory.toLowerCase();
-      }
+        if (!matchesCategory) return false;
 
-      if (!matchesCategory) return false;
+        if (debouncedQuery.trim()) {
+          const q = debouncedQuery.trim().toLowerCase();
+          const titleMatch = item.title?.toLowerCase().includes(q);
+          const albumMatch = item.albumTitle?.toLowerCase().includes(q);
+          const categoryMatch = item.category?.toLowerCase().includes(q);
+          return titleMatch || albumMatch || categoryMatch;
+        }
 
-      if (debouncedQuery.trim()) {
-        const q = debouncedQuery.trim().toLowerCase();
-        const titleMatch = item.title?.toLowerCase().includes(q);
-        const albumMatch = item.albumTitle?.toLowerCase().includes(q);
-        const categoryMatch = item.category?.toLowerCase().includes(q);
-        return titleMatch || albumMatch || categoryMatch;
-      }
+        return true;
+      });
+    },
+    [allGalleryItems, debouncedQuery]
+  );
 
-      return true;
-    });
-  }, [allGalleryItems, activeCategory, debouncedQuery]);
+  const activeFilteredItems = useMemo(() => {
+    return getFilteredItemsForCategory(activeCategory);
+  }, [getFilteredItemsForCategory, activeCategory]);
 
   const handleCardPress = (item: GalleryItemData) => {
-    const idx = filteredGalleryItems.findIndex((g) => g.id === item.id);
+    const idx = activeFilteredItems.findIndex((g) => g.id === item.id);
     setSelectedIndex(idx >= 0 ? idx : 0);
     setViewerVisible(true);
   };
@@ -266,7 +247,7 @@ export default function GalleryScreen() {
     }
   };
 
-  const currentPhoto = filteredGalleryItems[selectedIndex] || filteredGalleryItems[0];
+  const currentPhoto = activeFilteredItems[selectedIndex] || activeFilteredItems[0];
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 12;
 
   return (
@@ -331,17 +312,16 @@ export default function GalleryScreen() {
         )}
       </View>
 
-      {/* Main Content Body with Horizontal Tab Swipe Detector */}
-      <View style={styles.body} {...panResponder.panHandlers}>
-        {/* Category Tab Segment Bar */}
+      {/* Category Tab Segment Bar */}
+      <View style={styles.tabBarWrapper}>
         <View style={styles.tabBarContainer}>
-          {CATEGORY_TABS.map((tab) => {
-            const isActive = activeCategory === tab;
+          {CATEGORY_TABS.map((tab, idx) => {
+            const isActive = activeCategoryIndex === idx;
             return (
               <TouchableOpacity
                 key={tab}
                 style={styles.tabItem}
-                onPress={() => handleTabSwitch(tab)}
+                onPress={() => handleTabClick(idx)}
                 activeOpacity={0.8}
               >
                 <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
@@ -352,34 +332,36 @@ export default function GalleryScreen() {
             );
           })}
         </View>
+      </View>
 
-        {/* Refresh Cooldown Toast Notice */}
-        {cooldownMessage && (
-          <View style={styles.cooldownBanner}>
-            <Ionicons name="information-circle" size={18} color="#2B6CB0" style={{ marginRight: 6 }} />
-            <Text style={styles.cooldownText}>{cooldownMessage}</Text>
+      {/* Refresh Cooldown Notification Toast */}
+      {cooldownMessage && (
+        <View style={styles.cooldownBanner}>
+          <Ionicons name="information-circle" size={18} color="#2B6CB0" style={{ marginRight: 6 }} />
+          <Text style={styles.cooldownText}>{cooldownMessage}</Text>
+        </View>
+      )}
+
+      {/* Error Banner */}
+      {hasError && (
+        <TouchableOpacity
+          style={styles.errorBanner}
+          onPress={() => loadGalleryData(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="alert-circle-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.errorBannerTitle}>Unable to load gallery</Text>
+            <Text style={styles.errorBannerSub}>
+              {errorMessage || 'Network connection issue. Tap to retry.'}
+            </Text>
           </View>
-        )}
+          <Ionicons name="refresh" size={18} color="#C53030" />
+        </TouchableOpacity>
+      )}
 
-        {/* Error Banner */}
-        {hasError && (
-          <TouchableOpacity
-            style={styles.errorBanner}
-            onPress={() => loadGalleryData(true)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="alert-circle-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.errorBannerTitle}>Unable to load gallery</Text>
-              <Text style={styles.errorBannerSub}>
-                {errorMessage || 'Network connection issue. Tap to retry.'}
-              </Text>
-            </View>
-            <Ionicons name="refresh" size={18} color="#C53030" />
-          </TouchableOpacity>
-        )}
-
-        {/* Loading Skeletons */}
+      {/* 100% Sensitive Horizontal Paging Category Swiper */}
+      <View style={styles.body}>
         {loading ? (
           <View style={styles.skeletonGridContainer}>
             <View style={styles.skeletonRow}>
@@ -393,41 +375,67 @@ export default function GalleryScreen() {
           </View>
         ) : (
           <FlatList
-            data={filteredGalleryItems}
-            keyExtractor={(item) => item.id}
-            numColumns={2}
-            columnWrapperStyle={styles.columnWrapper}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                colors={['#6B1D2A']}
-                tintColor="#6B1D2A"
-              />
-            }
-            renderItem={({ item }) => (
-              <GalleryCard item={item} onPress={handleCardPress} />
-            )}
-            ListEmptyComponent={
-              !hasError ? (
-                <View style={styles.emptyStateBox}>
-                  <Ionicons name="images-outline" size={48} color="#CBD5E0" />
-                  <Text style={styles.emptyTitle}>No photos found</Text>
-                  <Text style={styles.emptySub}>
-                    {debouncedQuery
-                      ? `No images matching "${debouncedQuery}".`
-                      : `There are currently no photos in the "${activeCategory}" category.`}
-                  </Text>
+            ref={categoryPagerRef}
+            data={CATEGORY_TABS}
+            keyExtractor={(item) => item}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            getItemLayout={(_, index) => ({
+              length: SCREEN_WIDTH,
+              offset: SCREEN_WIDTH * index,
+              index,
+            })}
+            onMomentumScrollEnd={(e) => {
+              const newIdx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              if (newIdx !== activeCategoryIndex) {
+                setActiveCategoryIndex(newIdx);
+              }
+            }}
+            renderItem={({ item: category }) => {
+              const categoryItems = getFilteredItemsForCategory(category);
+              return (
+                <View style={styles.categoryPage}>
+                  <FlatList
+                    data={categoryItems}
+                    keyExtractor={(item) => item.id}
+                    numColumns={2}
+                    columnWrapperStyle={styles.columnWrapper}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.listContent}
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={handleRefresh}
+                        colors={['#6B1D2A']}
+                        tintColor="#6B1D2A"
+                      />
+                    }
+                    renderItem={({ item }) => (
+                      <GalleryCard item={item} onPress={handleCardPress} />
+                    )}
+                    ListEmptyComponent={
+                      !hasError ? (
+                        <View style={styles.emptyStateBox}>
+                          <Ionicons name="images-outline" size={48} color="#CBD5E0" />
+                          <Text style={styles.emptyTitle}>No photos found</Text>
+                          <Text style={styles.emptySub}>
+                            {debouncedQuery
+                              ? `No images matching "${debouncedQuery}".`
+                              : `There are currently no photos in the "${category}" category.`}
+                          </Text>
+                        </View>
+                      ) : null
+                    }
+                  />
                 </View>
-              ) : null
-            }
+              );
+            }}
           />
         )}
       </View>
 
-      {/* Full-Screen Gallery Image Swiper Modal with Horizontal Swipe & Working Pinch-to-Zoom */}
+      {/* Full-Screen Gallery Image Viewer Modal with Swiper + Working Pinch Zoom */}
       <Modal
         visible={viewerVisible}
         transparent
@@ -436,7 +444,7 @@ export default function GalleryScreen() {
       >
         <View style={styles.modalOverlay}>
           <SafeAreaView style={styles.modalSafeArea}>
-            {/* Modal Header with Safe Inset */}
+            {/* Modal Header */}
             <View style={styles.modalHeaderRow}>
               <TouchableOpacity
                 onPress={() => setViewerVisible(false)}
@@ -459,10 +467,10 @@ export default function GalleryScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Horizontal Paging Image Swiper (Google Photos style) */}
+            {/* Horizontal Image Swiper with Working PinchZoomImage */}
             <FlatList
               ref={modalFlatListRef}
-              data={filteredGalleryItems}
+              data={activeFilteredItems}
               keyExtractor={(item) => item.id}
               horizontal
               pagingEnabled
@@ -479,35 +487,20 @@ export default function GalleryScreen() {
               showsHorizontalScrollIndicator={false}
               renderItem={({ item }) => (
                 <View style={styles.slideItem}>
-                  <ScrollView
-                    style={styles.zoomScrollView}
-                    contentContainerStyle={styles.zoomContentContainer}
-                    maximumZoomScale={4}
-                    minimumZoomScale={1}
-                    showsHorizontalScrollIndicator={false}
-                    showsVerticalScrollIndicator={false}
-                    centerContent
-                    pinchGestureEnabled
-                  >
-                    <Image
-                      source={{
-                        uri: buildCloudinaryUrl(item.imageUrl, {
-                          quality: 'auto',
-                          format: 'auto',
-                          width: 1200,
-                          height: 1200,
-                          crop: 'fit',
-                        }),
-                      }}
-                      style={styles.slideImage}
-                      resizeMode="contain"
-                    />
-                  </ScrollView>
+                  <PinchZoomImage
+                    uri={buildCloudinaryUrl(item.imageUrl, {
+                      quality: 'auto',
+                      format: 'auto',
+                      width: 1200,
+                      height: 1200,
+                      crop: 'fit',
+                    })}
+                  />
                 </View>
               )}
             />
 
-            {/* Modal Footer Caption & Photo Index Counter */}
+            {/* Modal Footer */}
             {currentPhoto && (
               <View style={styles.modalFooterBox}>
                 <View style={styles.footerRow}>
@@ -515,7 +508,7 @@ export default function GalleryScreen() {
                     {currentPhoto.title}
                   </Text>
                   <Text style={styles.counterText}>
-                    {selectedIndex + 1} / {filteredGalleryItems.length}
+                    {selectedIndex + 1} / {activeFilteredItems.length}
                   </Text>
                 </View>
                 <View style={styles.badgeRow}>
@@ -570,8 +563,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1A202C',
   },
-  body: {
-    flex: 1,
+  tabBarWrapper: {
     backgroundColor: '#F8F9FA',
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -581,7 +573,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 4,
-    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     shadowColor: '#000',
@@ -614,6 +605,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#6B1D2A',
     borderRadius: 2,
   },
+  body: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  categoryPage: {
+    width: SCREEN_WIDTH,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
   columnWrapper: {
     justifyContent: 'space-between',
   },
@@ -621,6 +621,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   skeletonGridContainer: {
+    paddingHorizontal: 16,
     gap: 12,
     marginTop: 8,
   },
@@ -636,6 +637,7 @@ const styles = StyleSheet.create({
     borderColor: '#BEE3F8',
     borderRadius: 10,
     padding: 10,
+    marginHorizontal: 16,
     marginBottom: 12,
   },
   cooldownText: {
@@ -652,6 +654,7 @@ const styles = StyleSheet.create({
     borderColor: '#FEB2B2',
     borderRadius: 12,
     padding: 12,
+    marginHorizontal: 16,
     marginBottom: 14,
   },
   errorBannerTitle: {
@@ -689,7 +692,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  /* Modal Safe Area & Pinch-To-Zoom Paging Swiper Styling */
+  /* Modal Safe Area & Swiper Styling */
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.96)',
@@ -726,19 +729,6 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  zoomScrollView: {
-    width: SCREEN_WIDTH,
-    height: '100%',
-  },
-  zoomContentContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  slideImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.7,
   },
   modalFooterBox: {
     padding: 20,
