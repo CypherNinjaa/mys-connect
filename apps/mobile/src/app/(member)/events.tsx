@@ -1,295 +1,464 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
+  TextInput,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
+  SafeAreaView,
+  StatusBar,
   Alert,
+  Platform,
+  BackHandler,
+  ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
+import { EventCard, EventItemData } from '../../components/events/EventCard';
 import { EventCardSkeleton } from '../../components/ui/SkeletonLoader';
 
 type TabStatus = 'UPCOMING' | 'ONGOING' | 'COMPLETED';
 
+const TABS: { label: string; status: TabStatus }[] = [
+  { label: 'Upcoming', status: 'UPCOMING' },
+  { label: 'Ongoing', status: 'ONGOING' },
+  { label: 'Completed', status: 'COMPLETED' },
+];
+
 export default function EventsScreen() {
   const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
+
   const [activeTab, setActiveTab] = useState<TabStatus>('UPCOMING');
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<EventItemData[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [registeringId, setRegisteringId] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [registeringEventId, setRegisteringEventId] = useState<string | null>(null);
 
-  const fetchEvents = async () => {
-    try {
-      if (isSignedIn) {
-        const token = await getToken();
-        if (token) {
-          const res = await ApiService.getEvents(token, activeTab);
-          setEvents(res?.events || []);
-        }
+  // Android Hardware Back Navigation Handler
+  useEffect(() => {
+    const onBackPress = () => {
+      if (isSearching) {
+        setIsSearching(false);
+        setSearchQuery('');
+        return true;
       }
-    } catch (err: any) {
-      console.error('Fetch events error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [isSearching, router]);
+
+  const fetchEventsData = useCallback(
+    async (targetPage = 1, isRefresh = false, search = searchQuery) => {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else if (targetPage === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+
+      setHasError(false);
+      setErrorMessage(null);
+
+      try {
+        const token = (await getToken()) || undefined;
+        const res = await ApiService.getEvents(token, activeTab, search, targetPage, 10);
+
+        if (res && res.events) {
+          if (targetPage === 1) {
+            setEvents(res.events);
+          } else {
+            setEvents((prev) => [...prev, ...res.events]);
+          }
+          setPage(targetPage);
+          setHasMore(Boolean(res.pagination?.hasMore));
+        } else {
+          if (targetPage === 1) setEvents([]);
+          setHasMore(false);
+        }
+      } catch (err: any) {
+        console.error('Fetch events error:', err);
+        setHasError(true);
+        setErrorMessage(err.message || 'Could not load events from server');
+        if (targetPage === 1) setEvents([]);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }
+    },
+    [activeTab, searchQuery, getToken]
+  );
 
   useEffect(() => {
-    if (isSignedIn) {
-      setLoading(true);
-      void fetchEvents();
-    } else {
-      setLoading(false);
-    }
-  }, [activeTab, isSignedIn]);
+    void fetchEventsData(1, false, searchQuery);
+  }, [activeTab, searchQuery]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    void fetchEvents();
+  const handleRefresh = () => {
+    void fetchEventsData(1, true, searchQuery);
   };
 
-  const handleRegister = async (eventId: string, isRegistered: boolean) => {
+  const handleLoadMore = () => {
+    if (!loading && !loadingMore && hasMore) {
+      void fetchEventsData(page + 1, false, searchQuery);
+    }
+  };
+
+  // Optimistic Registration Toggle
+  const handleRegisterToggle = async (event: EventItemData) => {
+    if (!isSignedIn) {
+      Alert.alert('Authentication Required', 'Please sign in to register for events.');
+      return;
+    }
+
+    const newStatus = !event.isRegistered;
+    setRegisteringEventId(event.id);
+
+    // Optimistic Update
+    setEvents((prev) =>
+      prev.map((e) => (e.id === event.id ? { ...e, isRegistered: newStatus } : e))
+    );
+
     try {
       const token = await getToken();
-      if (!token) return;
+      if (!token) throw new Error('Authentication token unavailable');
 
-      setRegisteringId(eventId);
-      if (isRegistered) {
-        await ApiService.cancelEventRegistration(token, eventId);
-        Alert.alert('RSVP Updated', 'Your event registration has been cancelled.');
+      if (newStatus) {
+        await ApiService.registerForEvent(token, event.id);
+        Alert.alert('Registered 🎉', `You have registered for ${event.title}`);
       } else {
-        await ApiService.registerForEvent(token, eventId);
-        Alert.alert('Success 🎉', 'You have registered for this event!');
+        await ApiService.cancelEventRegistration(token, event.id);
+        Alert.alert('Registration Cancelled', `You unregistered from ${event.title}`);
       }
-      await fetchEvents();
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to update registration.');
+      console.error('Registration toggle error:', err);
+      // Revert Optimistic Update on failure
+      setEvents((prev) =>
+        prev.map((e) => (e.id === event.id ? { ...e, isRegistered: !newStatus } : e))
+      );
+      Alert.alert('Registration Error', err.message || 'Action failed. Please try again.');
     } finally {
-      setRegisteringId(null);
+      setRegisteringEventId(null);
     }
   };
 
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 12;
+
   return (
-    <View style={styles.container}>
-      {/* Category Tabs Header — Matching Wireframe 07 */}
-      <View style={styles.tabContainer}>
-        {(['UPCOMING', 'ONGOING', 'COMPLETED'] as TabStatus[]).map((tab) => (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#6B1D2A" />
+
+      {/* Maroon Header matching wireframe */}
+      <View style={[styles.headerContainer, { paddingTop: statusBarHeight + 8 }]}>
+        <View style={styles.headerRow}>
           <TouchableOpacity
-            key={tab}
-            style={[styles.tabButton, activeTab === tab && styles.tabButtonActive]}
-            onPress={() => setActiveTab(tab)}
+            style={styles.headerBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-              {tab.charAt(0) + tab.slice(1).toLowerCase()}
-            </Text>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-        ))}
-      </View>
 
-      {/* Events List */}
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary[500]]} />}
-      >
-        {loading ? (
-          <>
-            <EventCardSkeleton />
-            <EventCardSkeleton />
-            <EventCardSkeleton />
-          </>
-        ) : events.length > 0 ? (
-          events.map((evt) => {
-            const dateObj = new Date(evt.startDate);
-            const day = dateObj.getDate().toString().padStart(2, '0');
-            const month = dateObj.toLocaleString('default', { month: 'short' }).toUpperCase();
-            const fullDateStr = dateObj.toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'long',
-              year: 'numeric',
-            });
+          <Text style={styles.headerTitle}>Events</Text>
 
-            return (
-              <View key={evt.id} style={styles.eventCard}>
-                <View style={styles.cardHeader}>
-                  {/* Date Badge */}
-                  <View style={styles.dateBadge}>
-                    <Text style={styles.dateDay}>{day}</Text>
-                    <Text style={styles.dateMonth}>{month}</Text>
-                  </View>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => setIsSearching((prev) => !prev)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={isSearching ? 'close' : 'search'} size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
 
-                  <View style={styles.eventInfo}>
-                    <Text style={styles.eventTitle}>{evt.title}</Text>
-                    <Text style={styles.eventDate}>
-                      {fullDateStr} {evt.startTime ? `| ${evt.startTime}` : ''}
-                    </Text>
-                    <Text style={styles.eventVenue}>
-                      📍 {evt.venue || 'Shree Maheshwari Bhawan'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* RSVP Button */}
-                {activeTab === 'UPCOMING' && (
-                  <TouchableOpacity
-                    style={[
-                      styles.registerBtn,
-                      evt.isRegistered && styles.registeredBtn,
-                      registeringId === evt.id && styles.btnDisabled,
-                    ]}
-                    onPress={() => handleRegister(evt.id, Boolean(evt.isRegistered))}
-                    disabled={registeringId === evt.id}
-                  >
-                    <Text style={[styles.registerBtnText, evt.isRegistered && styles.registeredBtnText]}>
-                      {evt.isRegistered ? 'Registered ✓' : 'Register Now'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          })
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="calendar-outline" size={48} color={Colors.neutral[400]} />
-            <Text style={styles.emptyTitle}>No {activeTab.toLowerCase()} events</Text>
-            <Text style={styles.emptySub}>Check back later for upcoming community events</Text>
+        {/* Collapsible Search Input */}
+        {isSearching && (
+          <View style={styles.searchBarWrapper}>
+            <Ionicons name="search-outline" size={18} color="#718096" style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by event title or venue..."
+              placeholderTextColor="#A0AEC0"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color="#A0AEC0" />
+              </TouchableOpacity>
+            )}
           </View>
         )}
-      </ScrollView>
-    </View>
+      </View>
+
+      {/* Main Body */}
+      <View style={styles.body}>
+        {/* Tab Selector Segment Bar — Matching Wireframe */}
+        <View style={styles.tabBarContainer}>
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.status;
+            return (
+              <TouchableOpacity
+                key={tab.status}
+                style={styles.tabItem}
+                onPress={() => {
+                  if (activeTab !== tab.status) {
+                    setActiveTab(tab.status);
+                    setSearchQuery('');
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
+                  {tab.label}
+                </Text>
+                {isActive && <View style={styles.activeUnderline} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Error Banner with Retry Button */}
+        {hasError && (
+          <TouchableOpacity style={styles.errorBanner} onPress={handleRefresh} activeOpacity={0.8}>
+            <Ionicons name="alert-circle-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorBannerTitle}>Unable to load events</Text>
+              <Text style={styles.errorBannerSub}>
+                {errorMessage || 'Network error. Tap here to retry.'}
+              </Text>
+            </View>
+            <Ionicons name="refresh" size={18} color="#C53030" />
+          </TouchableOpacity>
+        )}
+
+        {/* Loading Skeletons */}
+        {loading ? (
+          <View style={styles.skeletonList}>
+            <EventCardSkeleton />
+            <EventCardSkeleton />
+            <EventCardSkeleton />
+          </View>
+        ) : (
+          <FlatList
+            data={events}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={['#6B1D2A']}
+                tintColor="#6B1D2A"
+              />
+            }
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.4}
+            renderItem={({ item }) => (
+              <EventCard
+                event={item}
+                activeTab={activeTab}
+                onRegisterToggle={handleRegisterToggle}
+                isRegistering={registeringEventId === item.id}
+                onPress={() => {
+                  // Route to details if available
+                }}
+              />
+            )}
+            ListFooterComponent={
+              loadingMore ? (
+                <View style={styles.loadingMoreBox}>
+                  <ActivityIndicator color="#6B1D2A" size="small" />
+                  <Text style={styles.loadingMoreText}>Loading more events...</Text>
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={
+              !hasError ? (
+                <View style={styles.emptyStateBox}>
+                  <Ionicons name="calendar-outline" size={48} color="#CBD5E0" />
+                  <Text style={styles.emptyTitle}>
+                    No {activeTab.toLowerCase()} events found
+                  </Text>
+                  <Text style={styles.emptySub}>
+                    {searchQuery
+                      ? `No events matching "${searchQuery}".`
+                      : `There are currently no ${activeTab.toLowerCase()} community events.`}
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#6B1D2A',
+  },
+  headerContainer: {
+    backgroundColor: '#6B1D2A',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 44,
+  },
+  headerBtn: {
+    padding: 6,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  searchBarWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1A202C',
+  },
+  body: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  tabContainer: {
+  tabBarContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.neutral[0],
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.light,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-    marginHorizontal: 4,
-  },
-  tabButtonActive: {
-    backgroundColor: Colors.primary[500],
-  },
-  tabText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text.secondary,
-  },
-  tabTextActive: {
-    color: Colors.neutral[0],
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: Spacing.md,
-  },
-  eventCard: {
-    backgroundColor: Colors.neutral[0],
-    borderRadius: Spacing.radiusMd,
-    padding: Spacing.md,
-    marginBottom: 14,
-    elevation: 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
+
+    // Soft border & shadow matching wireframe
     borderWidth: 1,
-    borderColor: '#EDF2F7',
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  cardHeader: {
+  tabItem: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  tabLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#718096',
+  },
+  activeTabLabel: {
+    color: '#6B1D2A',
+    fontWeight: '800',
+  },
+  activeUnderline: {
+    position: 'absolute',
+    bottom: 2,
+    width: '40%',
+    height: 3,
+    backgroundColor: '#6B1D2A',
+    borderRadius: 2,
+  },
+  skeletonList: {
+    marginTop: 8,
+    gap: 12,
+  },
+  listContent: {
+    paddingBottom: 40,
+  },
+  errorBanner: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  dateBadge: {
-    width: 54,
-    height: 54,
-    borderRadius: 12,
+    alignItems: 'center',
     backgroundColor: '#FFF5F5',
     borderWidth: 1,
     borderColor: '#FEB2B2',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
   },
-  dateDay: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.primary[500],
-  },
-  dateMonth: {
-    fontSize: 11,
+  errorBannerTitle: {
+    fontSize: 13,
     fontWeight: '700',
-    color: Colors.primary[500],
+    color: '#9B2C2C',
   },
-  eventInfo: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text.primary,
-  },
-  eventDate: {
-    fontSize: 12,
-    color: Colors.text.secondary,
-    marginTop: 4,
-  },
-  eventVenue: {
-    fontSize: 12,
-    color: Colors.text.tertiary,
+  errorBannerSub: {
+    fontSize: 11.5,
+    color: '#C53030',
     marginTop: 2,
   },
-  registerBtn: {
-    backgroundColor: Colors.primary[500],
-    borderRadius: 8,
-    paddingVertical: 10,
+  loadingMoreBox: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
+    paddingVertical: 16,
+    gap: 8,
   },
-  registeredBtn: {
-    backgroundColor: '#E6FFFA',
-    borderWidth: 1,
-    borderColor: '#319795',
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  registerBtnText: {
-    color: Colors.neutral[0],
-    fontWeight: '700',
+  loadingMoreText: {
     fontSize: 13,
+    color: '#718096',
+    fontWeight: '600',
   },
-  registeredBtnText: {
-    color: '#319795',
-  },
-  emptyContainer: {
+  emptyStateBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#F0F4F8',
+    elevation: 2,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text.primary,
+    fontWeight: '800',
+    color: '#2D3748',
     marginTop: 12,
   },
   emptySub: {
     fontSize: 13,
-    color: Colors.text.tertiary,
-    marginTop: 4,
+    color: '#718096',
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

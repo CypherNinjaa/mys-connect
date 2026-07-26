@@ -8,6 +8,7 @@ export class EventService {
     search?: string;
     page?: number;
     limit?: number;
+    userId?: string;
   }) {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(50, Math.max(1, Number(query.limit) || 10));
@@ -20,7 +21,11 @@ export class EventService {
     };
 
     if (query.search && query.search.trim()) {
-      where.title = { contains: query.search.trim(), mode: 'insensitive' };
+      const searchTerm = query.search.trim();
+      where.OR = [
+        { title: { contains: searchTerm, mode: 'insensitive' } },
+        { venue: { contains: searchTerm, mode: 'insensitive' } },
+      ];
     }
 
     if (query.status === 'UPCOMING') {
@@ -32,7 +37,7 @@ export class EventService {
       where.status = EventStatus.PUBLISHED;
     } else if (query.status === 'COMPLETED' || query.status === 'PAST') {
       where.OR = [
-        { startDate: { lt: now }, endDate: { lt: now } },
+        { endDate: { lt: now } },
         { status: EventStatus.COMPLETED },
       ];
     }
@@ -53,13 +58,33 @@ export class EventService {
       }),
     ]);
 
+    // Check user registration status
+    let userRsvps = new Set<string>();
+    if (query.userId && events.length > 0) {
+      const rsvps = await prisma.eventRSVP.findMany({
+        where: {
+          userId: query.userId,
+          eventId: { in: events.map((e) => e.id) },
+          status: RSVPStatus.REGISTERED,
+        },
+        select: { eventId: true },
+      });
+      userRsvps = new Set(rsvps.map((r) => r.eventId));
+    }
+
+    const formattedEvents = events.map((evt) => ({
+      ...evt,
+      isRegistered: userRsvps.has(evt.id),
+    }));
+
     return {
-      events,
+      events: formattedEvents,
       pagination: {
         page,
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        hasMore: page * limit < total,
       },
     };
   }
@@ -98,6 +123,15 @@ export class EventService {
 
     if (event.status === EventStatus.CANCELLED) {
       throw new AppError('This event has been cancelled', 400);
+    }
+
+    if (event.maxAttendees) {
+      const count = await prisma.eventRSVP.count({
+        where: { eventId, status: RSVPStatus.REGISTERED },
+      });
+      if (count >= event.maxAttendees) {
+        throw new AppError('Event capacity has been reached', 400);
+      }
     }
 
     const rsvp = await prisma.eventRSVP.upsert({

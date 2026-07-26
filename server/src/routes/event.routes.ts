@@ -5,7 +5,7 @@ import { userResolver } from '../middleware/userResolver';
 
 const router = Router();
 
-router.get('/', optionalAuth, EventController.getEvents);
+router.get('/', optionalAuth, userResolver, EventController.getEvents);
 router.get('/:id', optionalAuth, userResolver, EventController.getEventById);
 
 // Protected registration routes

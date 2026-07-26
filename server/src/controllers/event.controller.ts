@@ -5,12 +5,15 @@ import { AppError } from '../middleware/errorHandler';
 export class EventController {
   static async getEvents(req: Request, res: Response, next: NextFunction) {
     try {
-      const status = req.query.status as any;
+      const rawStatus = (req.query.status as string)?.toUpperCase();
+      const status = rawStatus as any;
       const search = req.query.search as string;
-      const page = req.query.page ? Number(req.query.page) : undefined;
-      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const page = req.query.page ? Number(req.query.page) : 1;
+      const limit = req.query.limit ? Number(req.query.limit) : 10;
+      // @ts-expect-error - Attached by userResolver
+      const userId = req.user?.id;
 
-      const data = await EventService.getEvents({ status, search, page, limit });
+      const data = await EventService.getEvents({ status, search, page, limit, userId });
       res.json({
         success: true,
         data,

@@ -153,10 +153,12 @@ export class ApiService {
   /**
    * Events API
    */
-  static async getEvents(token?: string, status?: string, search?: string) {
+  static async getEvents(token?: string, status?: string, search?: string, page = 1, limit = 10) {
     const params = new URLSearchParams();
     if (status) params.append('status', status);
     if (search) params.append('search', search);
+    params.append('page', String(page));
+    params.append('limit', String(limit));
 
     const res = await fetch(`${API.baseUrl}/events?${params.toString()}`, {
       method: 'GET',
