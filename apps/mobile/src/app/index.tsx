@@ -29,8 +29,8 @@ export default function SplashScreen() {
     async function checkAuthAndRedirect() {
       if (!isLoaded) return;
 
-      // Small delay for smooth splash display
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      // PRD FR-SPLASH-001 requires the brand splash for at least two seconds.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       if (!isSignedIn) {
         if (isMounted) router.replace('/(auth)/sign-in');
@@ -64,21 +64,25 @@ export default function SplashScreen() {
         if (dbUser) {
           if (dbUser.status === 'DEACTIVATED' || dbUser.status === 'REJECTED') {
             router.replace('/(auth)/deactivated');
+          } else if (dbUser.status === 'PENDING') {
+            router.replace('/(auth)/pending-approval');
           } else {
             router.replace('/(member)/home');
           }
         } else {
-          // Fallback to Clerk metadata if backend unreachable
+          // Metadata fallback
           const metadata: any = clerkUser?.publicMetadata || {};
-          if (metadata.status === 'DEACTIVATED') {
+          if (metadata.status === 'DEACTIVATED' || metadata.status === 'REJECTED') {
             router.replace('/(auth)/deactivated');
+          } else if (metadata.status === 'PENDING') {
+            router.replace('/(auth)/pending-approval');
           } else {
             router.replace('/(member)/home');
           }
         }
       } catch (error) {
         console.error('Splash auth guard error:', error);
-        if (isMounted) router.replace('/(member)/home');
+        if (isMounted) router.replace('/(auth)/sign-in');
       }
     }
 
@@ -87,7 +91,7 @@ export default function SplashScreen() {
     return () => {
       isMounted = false;
     };
-  }, [isLoaded, isSignedIn]);
+  }, [clerkUser?.publicMetadata, getToken, isLoaded, isSignedIn, router]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -95,7 +99,7 @@ export default function SplashScreen() {
 
       {/* Main Content Area */}
       <View style={styles.centerContent}>
-        {/* Official MYS Logo with Gold Ring */}
+        {/* Official MYS Logo */}
         <View style={styles.logoWrapper}>
           <Image
             source={require('../../assets/images/mys-logo.jpg')}
@@ -136,7 +140,7 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF6F0', // Warm cream background matching wireframe
+    backgroundColor: '#FAF6F0',
     justifyContent: 'space-between',
   },
   centerContent: {
@@ -163,7 +167,7 @@ const styles = StyleSheet.create({
   mainTitle: {
     fontSize: 34,
     fontWeight: '800',
-    color: Colors.primary[500], // Royal Maroon #6B1D2A
+    color: Colors.primary[500],
     letterSpacing: 1.5,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
@@ -171,7 +175,7 @@ const styles = StyleSheet.create({
   tagline: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#2C3E50', // Slate Navy
+    color: '#2C3E50',
     marginTop: 8,
     letterSpacing: 0.2,
     textAlign: 'center',
@@ -218,18 +222,14 @@ const styles = StyleSheet.create({
   },
   goldLine: {
     height: 4,
-    backgroundColor: Colors.secondary[500], // MYS Gold #D4A041
+    backgroundColor: Colors.secondary[500],
     borderTopLeftRadius: 50,
     borderTopRightRadius: 50,
-    shadowColor: Colors.secondary[500],
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
     elevation: 4,
   },
   maroonWave: {
     flex: 1,
-    backgroundColor: Colors.primary[500], // Royal Maroon #6B1D2A
+    backgroundColor: Colors.primary[500],
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
   },

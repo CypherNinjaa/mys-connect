@@ -12,9 +12,10 @@ import {
   Image,
   Dimensions,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth, useSignIn, useClerk } from '@clerk/expo';
+import { useAuth, useSignIn } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
@@ -23,7 +24,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function SignInScreen() {
   const { isLoaded } = useAuth();
-  const { setActive } = useClerk();
   const { signIn, fetchStatus } = useSignIn();
   const router = useRouter();
 
@@ -69,14 +69,9 @@ export default function SignInScreen() {
       }
 
       if (signIn.status === 'complete') {
-        if (signIn.createdSessionId && setActive) {
-          await setActive({ session: signIn.createdSessionId });
-        } else if (signIn.finalize) {
-          await signIn.finalize({
-            navigate: () => router.replace('/(member)/home'),
-          });
-        }
-        router.replace('/(member)/home');
+        await signIn.finalize({
+          navigate: () => router.replace('/'),
+        });
       } else {
         setErrorMessage('Sign in requires additional verification steps.');
       }
@@ -94,7 +89,10 @@ export default function SignInScreen() {
   };
 
   const handleGuestMode = () => {
-    router.replace('/(member)/home');
+    Alert.alert(
+      'Guest mode is coming soon',
+      'Guest browsing is not available in this build. Please register or sign in to continue.',
+    );
   };
 
   const isLoading = isSubmitting || fetchStatus === 'fetching';
@@ -214,7 +212,7 @@ export default function SignInScreen() {
 
             {/* Registration Navigation */}
             <View style={styles.registerRow}>
-              <Text style={styles.registerPrompt}>Don't have an account? </Text>
+              <Text style={styles.registerPrompt}>Don&apos;t have an account? </Text>
               <Link href="/(auth)/sign-up" asChild>
                 <TouchableOpacity>
                   <Text style={styles.registerLink}>Register Now</Text>

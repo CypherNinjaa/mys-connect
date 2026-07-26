@@ -15,7 +15,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth, useSignUp, useClerk } from '@clerk/expo';
+import { useAuth, useSignUp } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
@@ -24,7 +24,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function SignUpScreen() {
   const { isLoaded } = useAuth();
-  const { setActive } = useClerk();
   const { signUp, fetchStatus } = useSignUp();
   const router = useRouter();
 
@@ -93,7 +92,7 @@ export default function SignUpScreen() {
     }
   };
 
-  // Handle OTP verification code submission & redirect directly to Home
+  // Handle OTP verification and let the central guard continue onboarding.
   const handleVerify = async () => {
     const trimmedCode = code.trim();
     if (!trimmedCode) {
@@ -124,16 +123,10 @@ export default function SignUpScreen() {
       }
 
       if (signUp.status === 'complete') {
-        if (signUp.createdSessionId && setActive) {
-          await setActive({ session: signUp.createdSessionId });
-        } else if (signUp.finalize) {
-          await signUp.finalize({
-            navigate: () => router.replace('/(member)/home'),
-          });
-        }
+        await signUp.finalize({
+          navigate: () => router.replace('/'),
+        });
         setVerifying(false);
-        // Redirect directly to Home screen for simplified onboarding
-        router.replace('/(member)/home');
       } else {
         setErrorMessage('Verification incomplete. Please check your code.');
       }

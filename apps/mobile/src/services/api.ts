@@ -103,4 +103,163 @@ export class ApiService {
     }
     return data.data || [];
   }
+
+  /**
+   * Member Directory API
+   */
+  static async getMembers(token?: string, search?: string, cityName?: string, page = 1) {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (cityName && cityName !== 'All') params.append('cityName', cityName);
+    params.append('page', String(page));
+
+    const res = await fetch(`${API.baseUrl}/members?${params.toString()}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch members');
+    return data.data;
+  }
+
+  static async getMemberById(token?: string, id?: string) {
+    if (!id) return null;
+    const res = await fetch(`${API.baseUrl}/members/${id}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch member details');
+    return data.data;
+  }
+
+  /**
+   * Events API
+   */
+  static async getEvents(token?: string, status?: string, search?: string) {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (search) params.append('search', search);
+
+    const res = await fetch(`${API.baseUrl}/events?${params.toString()}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch events');
+    return data.data;
+  }
+
+  static async getEventById(token?: string, id?: string) {
+    if (!id) return null;
+    const res = await fetch(`${API.baseUrl}/events/${id}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch event');
+    return data.data;
+  }
+
+  static async registerForEvent(token: string, eventId: string) {
+    const res = await fetch(`${API.baseUrl}/events/${eventId}/register`, {
+      method: 'POST',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to register for event');
+    return data.data;
+  }
+
+  static async cancelEventRegistration(token: string, eventId: string) {
+    const res = await fetch(`${API.baseUrl}/events/${eventId}/register`, {
+      method: 'DELETE',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to cancel registration');
+    return data.data;
+  }
+
+  /**
+   * Notices API
+   */
+  static async getNotices(token: string, category?: string) {
+    const params = new URLSearchParams();
+    if (category && category !== 'ALL') params.append('category', category);
+
+    const res = await fetch(`${API.baseUrl}/notices?${params.toString()}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch notices');
+    return data.data;
+  }
+
+  /**
+   * Gallery API
+   */
+  static async getAlbums(token: string) {
+    const res = await fetch(`${API.baseUrl}/gallery/albums`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch gallery albums');
+    return data.data;
+  }
+
+  static async getAlbumById(token: string, id: string) {
+    const res = await fetch(`${API.baseUrl}/gallery/albums/${id}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch album photos');
+    return data.data;
+  }
+
+  /**
+   * Notifications API
+   */
+  static async getNotifications(token: string) {
+    const res = await fetch(`${API.baseUrl}/notifications`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch notifications');
+    return data.data;
+  }
+
+  static async getUnreadNotificationCount(token: string) {
+    const res = await fetch(`${API.baseUrl}/notifications/unread-count`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch unread count');
+    return data.data?.unreadCount || 0;
+  }
+
+  static async markNotificationRead(token: string, id: string) {
+    const res = await fetch(`${API.baseUrl}/notifications/${id}/read`, {
+      method: 'PATCH',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to mark notification as read');
+    return data.data;
+  }
+
+  static async markAllNotificationsRead(token: string) {
+    const res = await fetch(`${API.baseUrl}/notifications/read-all`, {
+      method: 'PATCH',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to mark all as read');
+    return data.data;
+  }
 }

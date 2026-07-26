@@ -21,6 +21,25 @@ export interface RegisterProfileInput {
 
 export class UserService {
   /**
+   * Helper to generate unique Member ID format: MYS/XXXXX
+   */
+  private static async generateMemberId(): Promise<string> {
+    const count = await prisma.user.count();
+    let num = count + 1;
+    let memberId = `MYS/${num.toString().padStart(5, '0')}`;
+    
+    // Ensure uniqueness
+    let existing = await prisma.user.findUnique({ where: { memberId } });
+    while (existing) {
+      num += 1;
+      memberId = `MYS/${num.toString().padStart(5, '0')}`;
+      existing = await prisma.user.findUnique({ where: { memberId } });
+    }
+
+    return memberId;
+  }
+
+  /**
    * Find user by Clerk ID with full profile & city relations
    */
   static async getUserByClerkId(clerkId: string) {
@@ -48,11 +67,13 @@ export class UserService {
     });
 
     if (!user) {
+      const memberId = await this.generateMemberId();
       user = await prisma.user.create({
         data: {
           clerkId,
           email,
           phone,
+          memberId,
           status: UserStatus.PENDING,
         },
         include: { profile: true },
@@ -63,7 +84,7 @@ export class UserService {
   }
 
   /**
-   * Complete member registration (saves profile data, keeps status PENDING for admin approval)
+   * Complete member registration (saves profile data and marks user profile complete)
    */
   static async completeRegistration(userId: string, data: RegisterProfileInput) {
     const user = await prisma.user.findUnique({
@@ -79,13 +100,15 @@ export class UserService {
       throw new AppError('Your account has been deactivated or rejected by administration.', 403);
     }
 
+    const fullName = `${data.firstName.trim()} ${data.lastName.trim()}`;
+
     // Upsert profile
     const profile = await prisma.profile.upsert({
       where: { userId },
       update: {
         firstName: data.firstName,
         lastName: data.lastName,
-        displayName: `${data.firstName} ${data.lastName}`,
+        displayName: fullName,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : undefined,
         gender: data.gender,
         bloodGroup: data.bloodGroup,
@@ -102,7 +125,7 @@ export class UserService {
         userId,
         firstName: data.firstName,
         lastName: data.lastName,
-        displayName: `${data.firstName} ${data.lastName}`,
+        displayName: fullName,
         dateOfBirth: data.dateOfBirth ? new Date(data.dateOfBirth) : null,
         gender: data.gender,
         bloodGroup: data.bloodGroup,
@@ -118,26 +141,21 @@ export class UserService {
       include: { city: true },
     });
 
-    // Auto-verify user status to ACTIVE upon registration completion
+    let memberId = user.memberId;
+    if (!memberId) {
+      memberId = await this.generateMemberId();
+    }
+
+    // Update User model fields
     await prisma.user.update({
       where: { id: userId },
       data: {
+        fullName,
+        memberId,
+        profileComplete: true,
         ...(data.phone ? { phone: data.phone } : {}),
-        status: UserStatus.ACTIVE,
       },
     });
-
-    // Update Clerk metadata for client role & status checks
-    try {
-      const { updateClerkUserMetadata } = require('../utils/clerk');
-      await updateClerkUserMetadata(user.clerkId, {
-        role: user.role || 'MEMBER',
-        status: UserStatus.ACTIVE,
-        approved: true,
-      });
-    } catch (err) {
-      // Non-blocking metadata sync error
-    }
 
     return {
       user: await this.getUserByClerkId(user.clerkId),
@@ -153,6 +171,12 @@ export class UserService {
       where: { userId },
       data: { avatarUrl },
     });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+    });
+
     return profile;
   }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,15 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Modal,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService, RegisterProfileData } from '../../services/api';
+import * as ImagePicker from 'expo-image-picker';
+import { ProfileSkeleton } from '../../components/ui/SkeletonLoader';
 
 const BLOOD_GROUPS = [
   { label: 'A+', value: 'A_POSITIVE' },
@@ -38,59 +41,69 @@ export default function ProfileScreen() {
   const router = useRouter();
 
   const [user, setUser] = useState<any>(null);
+  const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
+  const [activeModal, setActiveModal] = useState<'PERSONAL' | 'ADDRESS' | 'BUSINESS' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Edit Form Fields
+  // Form States
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState<'MALE' | 'FEMALE' | 'OTHER'>('MALE');
   const [bloodGroup, setBloodGroup] = useState<any>('O_POSITIVE');
   const [address, setAddress] = useState('');
+  const [cityId, setCityId] = useState('');
+  const [pinCode, setPinCode] = useState('');
   const [occupation, setOccupation] = useState('');
   const [organization, setOrganization] = useState('');
+  const [designation, setDesignation] = useState('');
 
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       if (isSignedIn) {
         const token = await getToken();
         if (token) {
-          const data = await ApiService.getMe(token);
+          const [data, citiesList] = await Promise.all([
+            ApiService.getMe(token),
+            ApiService.getCities().catch(() => []),
+          ]);
           setUser(data);
+          setCities(citiesList || []);
+
           if (data?.profile) {
             setFirstName(data.profile.firstName || '');
             setLastName(data.profile.lastName || '');
-            setPhone(data.phone || data.profile.phone || '');
+            setPhone(data.phone || '');
             if (data.profile.gender) setGender(data.profile.gender);
             if (data.profile.bloodGroup) setBloodGroup(data.profile.bloodGroup);
             setAddress(data.profile.address || '');
+            setCityId(data.profile.cityId || '');
+            setPinCode(data.profile.pinCode || '');
             setOccupation(data.profile.occupation || '');
             setOrganization(data.profile.organization || '');
+            setDesignation(data.profile.designation || '');
           }
         }
       }
     } catch (err) {
-      // Quietly swallow for guest mode
+      console.error('Load profile error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [getToken, isSignedIn]);
 
   useEffect(() => {
-    loadProfile();
-  }, [isSignedIn]);
+    void loadProfile();
+  }, [loadProfile]);
 
   const handlePickAvatar = async () => {
     try {
-      // Safely import expo-image-picker
-      const ImagePicker = require('expo-image-picker');
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission?.granted) {
-        Alert.alert('Permission Denied', 'Permission to access photo gallery is required.');
+        Alert.alert('Permission Required', 'Media library access is needed to select a profile photo.');
         return;
       }
 
@@ -108,21 +121,14 @@ export default function ProfileScreen() {
           const updated = await ApiService.uploadAvatar(token, result.assets[0].uri);
           setUser((prev: any) => ({
             ...prev,
-            profile: { ...prev?.profile, avatarUrl: updated?.avatarUrl || updated },
+            avatarUrl: updated?.avatarUrl || result.assets[0].uri,
+            profile: { ...prev?.profile, avatarUrl: updated?.avatarUrl || result.assets[0].uri },
           }));
           await loadProfile();
         }
       }
     } catch (err: any) {
-      console.error('Image picker error:', err);
-      if (err?.message?.includes('ExponentImagePicker')) {
-        Alert.alert(
-          'Rebuild Required',
-          'A new native module was added. Please re-run "npx expo run:android" in your mobile terminal to rebuild the app binary.'
-        );
-      } else {
-        Alert.alert('Upload Error', err.message || 'Failed to pick image.');
-      }
+      Alert.alert('Upload Error', err.message || 'Failed to update avatar photo');
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -130,7 +136,7 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      setErrorMessage('First Name and Last Name are required.');
+      setErrorMessage('First Name and Last Name are required');
       return;
     }
 
@@ -139,7 +145,7 @@ export default function ProfileScreen() {
 
     try {
       const token = await getToken();
-      if (!token) throw new Error('Sign in required.');
+      if (!token) throw new Error('Authentication required');
 
       const payload: RegisterProfileData = {
         firstName: firstName.trim(),
@@ -148,252 +154,278 @@ export default function ProfileScreen() {
         gender,
         bloodGroup,
         address: address.trim() || undefined,
+        cityId: cityId || undefined,
+        pinCode: pinCode.trim() || undefined,
         occupation: occupation.trim() || undefined,
         organization: organization.trim() || undefined,
+        designation: designation.trim() || undefined,
       };
 
       const result = await ApiService.registerProfile(token, payload);
-      if (result) {
-        setUser(result.user || result);
-      }
-      setIsEditing(false);
+      if (result?.user) setUser(result.user);
+      setActiveModal(null);
       await loadProfile();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to update profile.');
+      setErrorMessage(err.message || 'Failed to save profile changes');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleSignOut = async () => {
-    await signOut();
-    router.replace('/(auth)/sign-in');
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/(auth)/sign-in');
+        },
+      },
+    ]);
   };
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={Colors.primary[500]} />
+      <View style={styles.container}>
+        <ProfileSkeleton />
       </View>
     );
   }
 
   const profile = user?.profile;
-  const isRealEmail = user?.email && !user.email.includes('@user.clerk') && !user.email.includes('user_');
+  const displayName = user?.fullName || (profile?.firstName ? `${profile.firstName} ${profile.lastName}` : 'Member Profile');
+  const memberIdStr = user?.memberId || 'MYS/01234';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header Avatar & Info */}
-      <View style={styles.profileHeader}>
-        {/* Cloudinary Avatar Uploader */}
-        <TouchableOpacity
-          style={styles.avatarWrapper}
-          onPress={handlePickAvatar}
-          activeOpacity={0.8}
-        >
+      {/* Header Profile Section — Wireframe 10 */}
+      <View style={styles.profileHeaderCard}>
+        <TouchableOpacity style={styles.avatarContainer} onPress={handlePickAvatar} activeOpacity={0.85}>
           <View style={styles.avatarCircle}>
             {isUploadingAvatar ? (
               <ActivityIndicator color={Colors.secondary[500]} />
-            ) : profile?.avatarUrl ? (
-              <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
+            ) : user?.avatarUrl || profile?.avatarUrl ? (
+              <Image source={{ uri: user?.avatarUrl || profile?.avatarUrl }} style={styles.avatarImage} />
             ) : (
-              <Text style={styles.avatarText}>
-                {profile?.firstName ? profile.firstName[0].toUpperCase() : 'M'}
-              </Text>
+              <Text style={styles.avatarInitials}>{displayName[0]?.toUpperCase()}</Text>
             )}
           </View>
-
-          {/* Camera Badge */}
-          <View style={styles.cameraBadge}>
+          <View style={styles.cameraIconBadge}>
             <Ionicons name="camera" size={14} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
 
-        <Text style={styles.nameText}>
-          {profile?.firstName ? `${profile.firstName} ${profile.lastName}` : 'Member'}
-        </Text>
-        
-        {/* Only display real user emails; hide internal Clerk IDs */}
-        {isRealEmail && <Text style={styles.emailText}>{user.email}</Text>}
+        <Text style={styles.displayNameText}>{displayName}</Text>
+        <Text style={styles.memberIdText}>Member ID: {memberIdStr}</Text>
 
-        <View style={styles.statusBadge}>
-          <Text style={styles.statusBadgeText}>{user?.status || 'ACTIVE'}</Text>
-        </View>
-
-        {/* Edit Profile Toggle Button */}
-        <TouchableOpacity
-          style={styles.editToggleBtn}
-          onPress={() => setIsEditing(!isEditing)}
-        >
-          <Ionicons
-            name={isEditing ? 'close-outline' : 'create-outline'}
-            size={18}
-            color={Colors.secondary[500]}
-          />
-          <Text style={styles.editToggleBtnText}>
-            {isEditing ? 'Cancel Edit' : 'Edit Profile'}
+        <View style={styles.activeMemberBadge}>
+          <Text style={styles.activeMemberBadgeText}>
+            {user?.status === 'ACTIVE' ? 'Active Member' : user?.status || 'Active Member'}
           </Text>
+        </View>
+      </View>
+
+      {/* Menu List Options — Matching Wireframe 10 */}
+      <View style={styles.menuContainer}>
+        {/* 1. Personal Information */}
+        <TouchableOpacity style={styles.menuRow} onPress={() => setActiveModal('PERSONAL')}>
+          <View style={styles.menuIconCircle}>
+            <Ionicons name="person-outline" size={20} color={Colors.primary[500]} />
+          </View>
+
+```text
+          <View style={styles.menuTextContent}>
+            <Text style={styles.menuTitle}>Personal Information</Text>
+            <Text style={styles.menuSub}>Name, Gender, Blood Group</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
+        </TouchableOpacity>
+
+        {/* 2. Address */}
+        <TouchableOpacity style={styles.menuRow} onPress={() => setActiveModal('ADDRESS')}>
+          <View style={styles.menuIconCircle}>
+            <Ionicons name="location-outline" size={20} color={Colors.primary[500]} />
+          </View>
+          <View style={styles.menuTextContent}>
+            <Text style={styles.menuTitle}>Address</Text>
+            <Text style={styles.menuSub}>{profile?.city?.name || 'Ranchi'}, Jharkhand</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
+        </TouchableOpacity>
+
+        {/* 3. Business / Occupation */}
+        <TouchableOpacity style={styles.menuRow} onPress={() => setActiveModal('BUSINESS')}>
+          <View style={styles.menuIconCircle}>
+            <Ionicons name="briefcase-outline" size={20} color={Colors.primary[500]} />
+          </View>
+          <View style={styles.menuTextContent}>
+            <Text style={styles.menuTitle}>Business / Occupation</Text>
+            <Text style={styles.menuSub}>{profile?.occupation || 'Add your profession'}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
+        </TouchableOpacity>
+
+        {/* 4. Change Password */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          onPress={() => router.push('/(auth)/forgot-password')}
+        >
+          <View style={styles.menuIconCircle}>
+            <Ionicons name="lock-closed-outline" size={20} color={Colors.primary[500]} />
+          </View>
+          <View style={styles.menuTextContent}>
+            <Text style={styles.menuTitle}>Change Password</Text>
+            <Text style={styles.menuSub}>Reset account credentials</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
+        </TouchableOpacity>
+
+        {/* 5. Downloads */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          onPress={() => Alert.alert('Downloads', 'No downloadable documents available at this time.')}
+        >
+          <View style={styles.menuIconCircle}>
+            <Ionicons name="cloud-download-outline" size={20} color={Colors.primary[500]} />
+          </View>
+          <View style={styles.menuTextContent}>
+            <Text style={styles.menuTitle}>Downloads</Text>
+            <Text style={styles.menuSub}>Forms & ID Documents</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
         </TouchableOpacity>
       </View>
 
-      {/* Editing Form inside Profile Tab */}
-      {isEditing ? (
-        <View style={styles.card}>
-          <Text style={styles.cardSectionTitle}>Edit Member Profile</Text>
+      {/* Sign Out Button — Wireframe 10 */}
+      <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+        <Ionicons name="log-out-outline" size={20} color="#E53E3E" style={{ marginRight: 8 }} />
+        <Text style={styles.signOutBtnText}>Sign Out Account</Text>
+      </TouchableOpacity>
 
-          {errorMessage && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
+      {/* Edit Profile Section Modal */}
+      <Modal visible={Boolean(activeModal)} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalHeaderTitle}>
+                {activeModal === 'PERSONAL' && 'Edit Personal Info'}
+                {activeModal === 'ADDRESS' && 'Edit Address Details'}
+                {activeModal === 'BUSINESS' && 'Edit Business / Occupation'}
+              </Text>
+              <TouchableOpacity onPress={() => setActiveModal(null)}>
+                <Ionicons name="close" size={24} color={Colors.text.primary} />
+              </TouchableOpacity>
             </View>
-          )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>First Name *</Text>
-            <TextInput
-              style={styles.input}
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="First Name"
-            />
-          </View>
+            {errorMessage && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Last Name *</Text>
-            <TextInput
-              style={styles.input}
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="Last Name"
-            />
-          </View>
+            <ScrollView style={styles.formScroll}>
+              {activeModal === 'PERSONAL' && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>First Name *</Text>
+                    <TextInput style={styles.input} value={firstName} onChangeText={setFirstName} placeholder="First Name" />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Last Name *</Text>
+                    <TextInput style={styles.input} value={lastName} onChangeText={setLastName} placeholder="Last Name" />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Phone Number</Text>
+                    <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Mobile Number" />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Gender</Text>
+                    <View style={styles.chipRow}>
+                      {GENDERS.map((g) => (
+                        <TouchableOpacity
+                          key={g.value}
+                          style={[styles.chip, gender === g.value && styles.chipActive]}
+                          onPress={() => setGender(g.value as any)}
+                        >
+                          <Text style={[styles.chipText, gender === g.value && styles.chipTextActive]}>{g.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Blood Group</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {BLOOD_GROUPS.map((bg) => (
+                        <TouchableOpacity
+                          key={bg.value}
+                          style={[styles.chip, bloodGroup === bg.value && styles.chipActive]}
+                          onPress={() => setBloodGroup(bg.value as any)}
+                        >
+                          <Text style={[styles.chipText, bloodGroup === bg.value && styles.chipTextActive]}>{bg.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </>
+              )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Phone Number</Text>
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Phone Number"
-              keyboardType="phone-pad"
-            />
-          </View>
+              {activeModal === 'ADDRESS' && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Residential Address</Text>
+                    <TextInput style={[styles.input, { height: 80 }]} multiline value={address} onChangeText={setAddress} placeholder="Street / Colony Address" />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>City Chapter</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {cities.map((c) => (
+                        <TouchableOpacity
+                          key={c.id}
+                          style={[styles.chip, cityId === c.id && styles.chipActive]}
+                          onPress={() => setCityId(c.id)}
+                        >
+                          <Text style={[styles.chipText, cityId === c.id && styles.chipTextActive]}>{c.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Pin Code</Text>
+                    <TextInput style={styles.input} value={pinCode} onChangeText={setPinCode} keyboardType="number-pad" maxLength={6} placeholder="Pin Code" />
+                  </View>
+                </>
+              )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Gender</Text>
-            <View style={styles.chipRow}>
-              {GENDERS.map((g) => (
-                <TouchableOpacity
-                  key={g.value}
-                  style={[styles.chip, gender === g.value && styles.chipActive]}
-                  onPress={() => setGender(g.value as any)}
-                >
-                  <Text style={[styles.chipText, gender === g.value && styles.chipTextActive]}>
-                    {g.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+              {activeModal === 'BUSINESS' && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Occupation / Profession</Text>
+                    <TextInput style={styles.input} value={occupation} onChangeText={setOccupation} placeholder="e.g. Business, Engineer, Doctor, CA" />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Company / Firm Name</Text>
+                    <TextInput style={styles.input} value={organization} onChangeText={setOrganization} placeholder="Organization Name" />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Designation</Text>
+                    <TextInput style={styles.input} value={designation} onChangeText={setDesignation} placeholder="e.g. Director, Partner, Manager" />
+                  </View>
+                </>
+              )}
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Blood Group</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {BLOOD_GROUPS.map((bg) => (
-                <TouchableOpacity
-                  key={bg.value}
-                  style={[styles.chip, bloodGroup === bg.value && styles.chipActive]}
-                  onPress={() => setBloodGroup(bg.value as any)}
-                >
-                  <Text style={[styles.chipText, bloodGroup === bg.value && styles.chipTextActive]}>
-                    {bg.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              <TouchableOpacity
+                style={[styles.saveBtn, isSaving && styles.btnDisabled]}
+                onPress={handleSaveProfile}
+                disabled={isSaving}
+              >
+                {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveBtnText}>Save Details</Text>}
+              </TouchableOpacity>
             </ScrollView>
           </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Occupation / Field</Text>
-            <TextInput
-              style={styles.input}
-              value={occupation}
-              onChangeText={setOccupation}
-              placeholder="e.g. Software Engineer, Business"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Organization Name</Text>
-            <TextInput
-              style={styles.input}
-              value={organization}
-              onChangeText={setOrganization}
-              placeholder="Company or Firm Name"
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.saveBtn, isSaving && styles.btnDisabled]}
-            onPress={handleSaveProfile}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.saveBtnText}>Save Profile Details</Text>
-            )}
-          </TouchableOpacity>
         </View>
-      ) : (
-        <>
-          {/* Details Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardSectionTitle}>Personal & Contact Details</Text>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Phone Number</Text>
-              <Text style={styles.infoValue}>{user?.phone || 'Not provided'}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Gender</Text>
-              <Text style={styles.infoValue}>{profile?.gender || 'N/A'}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Blood Group</Text>
-              <Text style={styles.infoValue}>
-                {profile?.bloodGroup ? profile.bloodGroup.replace('_', ' ') : 'N/A'}
-              </Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>City Chapter</Text>
-              <Text style={styles.infoValue}>{profile?.city?.name || 'Ranchi'}</Text>
-            </View>
-          </View>
-
-          {/* Professional Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardSectionTitle}>Professional Details</Text>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Occupation</Text>
-              <Text style={styles.infoValue}>{profile?.occupation || 'Not specified'}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Organization</Text>
-              <Text style={styles.infoValue}>{profile?.organization || 'Not specified'}</Text>
-            </View>
-          </View>
-
-          {/* Sign Out Button */}
-          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-            <Text style={styles.signOutButtonText}>Sign Out Account</Text>
-          </TouchableOpacity>
-        </>
-      )}
+      </Modal>
     </ScrollView>
   );
 }
@@ -401,27 +433,23 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: '#F8F9FA',
   },
   content: {
     padding: Spacing.md,
     paddingBottom: 40,
   },
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileHeader: {
+  profileHeaderCard: {
     backgroundColor: Colors.primary[500],
     borderRadius: Spacing.radiusLg,
-    padding: Spacing.xl,
+    padding: Spacing.lg,
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
+    elevation: 3,
   },
-  avatarWrapper: {
+  avatarContainer: {
     position: 'relative',
-    marginBottom: Spacing.sm,
+    marginBottom: 10,
   },
   avatarCircle: {
     width: 84,
@@ -438,12 +466,12 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  avatarText: {
+  avatarInitials: {
+    color: Colors.secondary[500],
     fontSize: 32,
     fontWeight: '800',
-    color: Colors.secondary[500],
   },
-  cameraBadge: {
+  cameraIconBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
@@ -456,75 +484,127 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: Colors.primary[500],
   },
-  nameText: {
+  displayNameText: {
     fontSize: 20,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.neutral[0],
   },
-  emailText: {
+  memberIdText: {
     fontSize: 13,
-    color: Colors.primary[100],
+    color: Colors.secondary[300],
+    fontWeight: '600',
     marginTop: 2,
   },
-  statusBadge: {
-    backgroundColor: Colors.success.light,
+  activeMemberBadge: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: Spacing.radiusSm,
-    marginTop: Spacing.sm,
+    borderRadius: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(212,160,65,0.4)',
   },
-  statusBadgeText: {
-    color: Colors.success.dark,
+  activeMemberBadgeText: {
+    color: Colors.secondary[400],
+    fontSize: 11,
     fontWeight: '700',
-    fontSize: 12,
   },
-  editToggleBtn: {
+  menuContainer: {
+    backgroundColor: Colors.neutral[0],
+    borderRadius: Spacing.radiusLg,
+    paddingVertical: 6,
+    marginBottom: Spacing.lg,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#EDF2F7',
+  },
+  menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  menuIconCircle: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.secondary[500],
+    backgroundColor: '#FFF5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
-  editToggleBtnText: {
-    color: Colors.secondary[500],
-    fontWeight: '700',
-    fontSize: 13,
+  menuTextContent: {
+    flex: 1,
   },
-  card: {
-    backgroundColor: Colors.neutral[0],
-    borderRadius: Spacing.radiusMd,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    elevation: 2,
-  },
-  cardSectionTitle: {
+  menuTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: Colors.primary[500],
-    marginBottom: Spacing.md,
+    color: Colors.text.primary,
+  },
+  menuSub: {
+    fontSize: 12,
+    color: Colors.text.tertiary,
+    marginTop: 2,
+  },
+  signOutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
+    borderRadius: Spacing.radiusMd,
+    paddingVertical: 14,
+  },
+  signOutBtnText: {
+    color: '#E53E3E',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: Colors.neutral[0],
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border.light,
-    paddingBottom: 6,
+    borderBottomColor: '#EDF2F7',
+  },
+  modalHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: Colors.primary[500],
   },
   errorBox: {
-    backgroundColor: Colors.error.light,
+    backgroundColor: '#FFF5F5',
     padding: 10,
     borderRadius: 8,
-    marginBottom: 12,
+    marginTop: 10,
   },
   errorText: {
-    color: Colors.error.dark,
+    color: '#E53E3E',
     fontSize: 13,
+  },
+  formScroll: {
+    marginTop: 14,
   },
   inputGroup: {
     marginBottom: 14,
   },
-  label: {
+  inputLabel: {
     fontSize: 13,
     fontWeight: '600',
     color: Colors.text.secondary,
@@ -538,7 +618,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     color: Colors.text.primary,
-    backgroundColor: Colors.neutral[50],
+    backgroundColor: '#FAFAFA',
   },
   chipRow: {
     flexDirection: 'row',
@@ -548,7 +628,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: Colors.neutral[100],
+    backgroundColor: '#EDF2F7',
     borderWidth: 1,
     borderColor: Colors.border.default,
     marginRight: 6,
@@ -570,41 +650,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 16,
+    marginBottom: 20,
   },
   btnDisabled: {
-    opacity: 0.65,
+    opacity: 0.6,
   },
   saveBtnText: {
     color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.neutral[100],
-  },
-  infoLabel: {
-    fontSize: 13,
-    color: Colors.text.tertiary,
-  },
-  infoValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.text.primary,
-  },
-  signOutButton: {
-    backgroundColor: Colors.error.dark,
-    borderRadius: Spacing.radiusMd,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: Spacing.md,
-  },
-  signOutButtonText: {
-    color: Colors.neutral[0],
     fontWeight: '700',
     fontSize: 15,
   },

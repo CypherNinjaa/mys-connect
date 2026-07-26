@@ -30,24 +30,12 @@ const GENDERS = [
   { label: 'Other', value: 'OTHER' },
 ];
 
-const DEFAULT_CITIES = [
-  { id: 'city_ranchi', name: 'Ranchi' },
-  { id: 'city_jamshedpur', name: 'Jamshedpur' },
-  { id: 'city_dhanbad', name: 'Dhanbad' },
-  { id: 'city_bokaro', name: 'Bokaro' },
-  { id: 'city_hazaribagh', name: 'Hazaribagh' },
-  { id: 'city_giridih', name: 'Giridih' },
-  { id: 'city_deoghar', name: 'Deoghar' },
-  { id: 'city_ramgarh', name: 'Ramgarh' },
-  { id: 'city_dumka', name: 'Dumka' },
-];
-
 export default function CompleteProfileScreen() {
   const { getToken } = useAuth();
   const router = useRouter();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [cities, setCities] = useState<Array<{ id: string; name: string }>>(DEFAULT_CITIES);
+  const [cities, setCities] = useState<{ id: string; name: string }[]>([]);
   const [loadingCities, setLoadingCities] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -61,7 +49,7 @@ export default function CompleteProfileScreen() {
   const [dateOfBirth, setDateOfBirth] = useState('');
 
   const [address, setAddress] = useState('');
-  const [cityId, setCityId] = useState(DEFAULT_CITIES[0].id);
+  const [cityId, setCityId] = useState('');
   const [pinCode, setPinCode] = useState('');
 
   const [occupation, setOccupation] = useState('');
@@ -77,8 +65,8 @@ export default function CompleteProfileScreen() {
           setCities(data);
           setCityId(data[0].id);
         }
-      } catch (err) {
-        console.warn('Backend connection warning, loaded fallback city list');
+      } catch {
+        setErrorMessage('Unable to load cities. Please check your connection and try again.');
       } finally {
         setLoadingCities(false);
       }
@@ -97,6 +85,10 @@ export default function CompleteProfileScreen() {
         setErrorMessage('Phone number is required.');
         return false;
       }
+    }
+    if (step === 2 && !cityId) {
+      setErrorMessage('Please select your city.');
+      return false;
     }
     return true;
   };
@@ -142,7 +134,7 @@ export default function CompleteProfileScreen() {
       };
 
       await ApiService.registerProfile(token, profilePayload);
-      router.replace('/(member)/home');
+      router.replace('/(auth)/pending-approval');
     } catch (err: any) {
       console.error('Registration error:', err);
       setErrorMessage(err.message || 'Failed to submit profile registration.');

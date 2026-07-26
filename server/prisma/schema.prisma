@@ -19,7 +19,8 @@ datasource db {
 enum UserRole {
   SUPER_ADMIN
   ADMIN
-  MODERATOR
+  EXECUTIVE
+  VOLUNTEER
   MEMBER
   GUEST
 }
@@ -56,17 +57,15 @@ enum EventStatus {
 }
 
 enum RSVPStatus {
-  GOING
-  NOT_GOING
-  MAYBE
+  REGISTERED
+  CANCELLED
+  ATTENDED
 }
 
 enum NoticeType {
   GENERAL
-  URGENT
-  EVENT
-  MEETING
-  ANNOUNCEMENT
+  IMPORTANT
+  CIRCULAR
 }
 
 enum NoticePriority {
@@ -96,33 +95,41 @@ enum NotificationStatus {
 
 /// Core user account — linked to Clerk via clerkId
 model User {
-  id            String     @id @default(cuid())
-  clerkId       String     @unique
-  email         String     @unique
-  phone         String?    @unique
-  role          UserRole   @default(MEMBER)
-  status        UserStatus @default(PENDING)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id              String     @id @default(cuid())
+  clerkId         String     @unique
+  email           String     @unique
+  phone           String?    @unique
+  fullName        String?
+  memberId        String?    @unique
+  avatarUrl       String?
+  role            UserRole   @default(MEMBER)
+  status          UserStatus @default(PENDING)
+  profileComplete Boolean    @default(false)
+  expoPushToken   String?
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   // Relations
   profile       Profile?
   eventRSVPs    EventRSVP[]
   notifications Notification[]
+  noticeReads   NoticeRead[]
 
   @@index([clerkId])
   @@index([status])
+  @@index([role])
   @@map("users")
 }
 
-/// Extended member profile — personal, professional, family info
+/// Extended member profile — personal, professional info
 model Profile {
   id              String      @id @default(cuid())
   userId          String      @unique
   
   // Personal
-  firstName       String
-  lastName        String
+  firstName       String?
+  lastName        String?
   displayName     String?
   dateOfBirth     DateTime?
   gender          Gender?
@@ -151,7 +158,6 @@ model Profile {
   city            City?       @relation(fields: [cityId], references: [id])
 
   @@index([cityId])
-  @@index([firstName, lastName])
   @@map("profiles")
 }
 
@@ -217,12 +223,12 @@ model Event {
   @@map("events")
 }
 
-/// RSVP tracking for events
+/// RSVP / Registration tracking for events
 model EventRSVP {
   id        String     @id @default(cuid())
   userId    String
   eventId   String
-  status    RSVPStatus @default(GOING)
+  status    RSVPStatus @default(REGISTERED)
   note      String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
@@ -253,26 +259,29 @@ model EventPhoto {
 
 /// Notices/Announcements — admin-published
 model Notice {
-  id          String         @id @default(cuid())
-  title       String
-  content     String
-  type        NoticeType     @default(GENERAL)
-  priority    NoticePriority @default(MEDIUM)
+  id            String         @id @default(cuid())
+  title         String
+  content       String
+  type          NoticeType     @default(GENERAL)
+  priority      NoticePriority @default(MEDIUM)
   
   // Scheduling
-  publishedAt DateTime?
-  expiresAt   DateTime?
-  isPublished Boolean        @default(false)
-  isPinned    Boolean        @default(false)
+  publishedAt   DateTime?
+  expiresAt     DateTime?
+  isPublished   Boolean        @default(false)
+  isPinned      Boolean        @default(false)
   
   // Media
-  imageUrl    String?
+  imageUrl      String?
   attachmentUrl String?
   
   // Admin
-  createdById String
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdById   String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  noticeReads   NoticeRead[]
 
   @@index([isPublished, publishedAt])
   @@index([type])
@@ -280,22 +289,36 @@ model Notice {
   @@map("notices")
 }
 
+/// Tracking notice reads per user
+model NoticeRead {
+  id        String   @id @default(cuid())
+  noticeId  String
+  userId    String
+  readAt    DateTime @default(now())
+
+  notice    Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([noticeId, userId])
+  @@map("notice_reads")
+}
+
 /// Photo album — admin-curated galleries
 model Album {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
+  id            String       @id @default(cuid())
+  title         String
+  description   String?
   coverImageUrl String?
-  isPublished Boolean      @default(false)
-  sortOrder   Int          @default(0)
+  isPublished   Boolean      @default(false)
+  sortOrder     Int          @default(0)
   
   // Admin
-  createdById String
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdById   String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   // Relations
-  photos      AlbumPhoto[]
+  photos        AlbumPhoto[]
 
   @@index([isPublished])
   @@map("albums")
@@ -303,16 +326,16 @@ model Album {
 
 /// Individual photos in an album
 model AlbumPhoto {
-  id        String   @id @default(cuid())
-  albumId   String
-  imageUrl  String
+  id           String   @id @default(cuid())
+  albumId      String
+  imageUrl     String
   thumbnailUrl String?
-  caption   String?
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  caption      String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
 
   // Relations
-  album     Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  album        Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
 
   @@index([albumId])
   @@map("album_photos")
@@ -320,7 +343,7 @@ model AlbumPhoto {
 
 /// Push notification records
 model Notification {
-  id          String             @id @default(cuid())
+  id          String              @id @default(cuid())
   userId      String
   title       String
   body        String
@@ -332,10 +355,10 @@ model Notification {
   sentAt      DateTime?
   readAt      DateTime?
   
-  createdAt   DateTime           @default(now())
+  createdAt   DateTime            @default(now())
 
   // Relations
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
   @@index([createdAt])
@@ -354,6 +377,21 @@ model PushToken {
 
   @@index([userId])
   @@map("push_tokens")
+}
+
+/// Downloadable resources/documents
+model Download {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  fileUrl     String
+  fileType    String?
+  fileSize    Int?
+  isActive    Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@map("downloads")
 }
 
 /// App-level settings — key/value store for admin config

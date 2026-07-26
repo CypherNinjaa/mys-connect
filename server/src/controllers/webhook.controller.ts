@@ -4,6 +4,9 @@ import { config } from '../config';
 import { prisma } from '../utils/prisma';
 import { logger } from '../utils/logger';
 import { UserStatus } from '@prisma/client';
+import { AppError } from '../middleware/errorHandler';
+
+type RequestWithRawBody = Request & { rawBody?: Buffer };
 
 export class WebhookController {
   /**
@@ -15,23 +18,29 @@ export class WebhookController {
       const webhookSecret = config.clerkWebhookSecret;
 
       if (!webhookSecret) {
-        logger.warn('Clerk Webhook secret not configured. Skipping Svix signature verification.');
-      } else {
-        const payload = JSON.stringify(req.body);
-        const headers = req.headers;
-        const svix_id = headers['svix-id'] as string;
-        const svix_timestamp = headers['svix-timestamp'] as string;
-        const svix_signature = headers['svix-signature'] as string;
-
-        if (svix_id && svix_timestamp && svix_signature) {
-          const wh = new Webhook(webhookSecret);
-          wh.verify(payload, {
-            'svix-id': svix_id,
-            'svix-timestamp': svix_timestamp,
-            'svix-signature': svix_signature,
-          });
-        }
+        throw new AppError('Clerk webhook secret is not configured.', 500);
       }
+
+      const rawBody = (req as RequestWithRawBody).rawBody;
+      const svixId = req.headers['svix-id'];
+      const svixTimestamp = req.headers['svix-timestamp'];
+      const svixSignature = req.headers['svix-signature'];
+
+      if (
+        !rawBody ||
+        typeof svixId !== 'string' ||
+        typeof svixTimestamp !== 'string' ||
+        typeof svixSignature !== 'string'
+      ) {
+        throw new AppError('Invalid Clerk webhook request.', 400);
+      }
+
+      const webhook = new Webhook(webhookSecret);
+      webhook.verify(rawBody, {
+        'svix-id': svixId,
+        'svix-timestamp': svixTimestamp,
+        'svix-signature': svixSignature,
+      });
 
       const { type, data } = req.body;
       logger.info(`🔔 Clerk Webhook event received: ${type}`);

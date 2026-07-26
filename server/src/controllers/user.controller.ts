@@ -2,6 +2,33 @@ import { Request, Response, NextFunction } from 'express';
 import { getAuth } from '@clerk/express';
 import { UserService } from '../services/user.service';
 import { uploadToCloudinary } from '../utils/cloudinary';
+import { AppError } from '../middleware/errorHandler';
+import { BloodGroup, Gender } from '@prisma/client';
+import { z } from 'zod';
+
+const optionalText = z.string().trim().max(500).optional();
+
+const registrationSchema = z.object({
+  firstName: z.string().trim().min(2).max(100).regex(/^[\p{L} ]+$/u),
+  lastName: z.string().trim().min(2).max(100).regex(/^[\p{L} ]+$/u),
+  phone: z
+    .string()
+    .trim()
+    .transform((value) => value.replace(/\D/g, ''))
+    .refine((value) => /^[6-9]\d{9}$/.test(value), 'Enter a valid 10-digit Indian mobile number')
+    .optional(),
+  dateOfBirth: z.string().date().optional(),
+  gender: z.nativeEnum(Gender).optional(),
+  bloodGroup: z.nativeEnum(BloodGroup).optional(),
+  address: optionalText,
+  cityId: z.string().trim().min(1).max(100).optional(),
+  state: z.string().trim().min(2).max(100).optional(),
+  pinCode: z.string().trim().regex(/^\d{6}$/).optional(),
+  occupation: z.string().trim().max(100).optional(),
+  organization: z.string().trim().max(200).optional(),
+  designation: z.string().trim().max(100).optional(),
+  bio: optionalText,
+});
 
 export class UserController {
   /**
@@ -40,9 +67,21 @@ export class UserController {
    */
   static async register(req: Request, res: Response, next: NextFunction) {
     try {
+      const parsedProfile = registrationSchema.safeParse(req.body);
+      if (!parsedProfile.success) {
+        throw new AppError(
+          parsedProfile.error.issues[0]?.message || 'Invalid profile information.',
+          422,
+        );
+      }
+
       // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
-      const result = await UserService.completeRegistration(userId, req.body);
+      if (!userId) {
+        throw new AppError('User account not found.', 401);
+      }
+
+      const result = await UserService.completeRegistration(userId, parsedProfile.data);
       res.json({
         success: true,
         message: 'Profile submitted successfully.',

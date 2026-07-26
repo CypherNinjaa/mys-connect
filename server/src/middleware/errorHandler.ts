@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger';
 
 export class AppError extends Error {
@@ -29,6 +30,30 @@ export const errorHandler = (
       },
     });
     return;
+  }
+
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2002') {
+      res.status(409).json({
+        success: false,
+        error: {
+          message: 'A record with this value already exists.',
+          statusCode: 409,
+        },
+      });
+      return;
+    }
+
+    if (err.code === 'P2025') {
+      res.status(404).json({
+        success: false,
+        error: {
+          message: 'The requested record was not found.',
+          statusCode: 404,
+        },
+      });
+      return;
+    }
   }
 
   // Unexpected errors

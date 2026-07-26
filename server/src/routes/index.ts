@@ -3,6 +3,11 @@ import { apiLimiter } from '../middleware/rateLimiter';
 import { userRoutes } from './user.routes';
 import { adminRoutes } from './admin.routes';
 import { webhookRoutes } from './webhook.routes';
+import { memberRoutes } from './member.routes';
+import { eventRoutes } from './event.routes';
+import { noticeRoutes } from './notice.routes';
+import { galleryRoutes } from './gallery.routes';
+import { notificationRoutes } from './notification.routes';
 
 const router = Router();
 
@@ -11,6 +16,11 @@ router.use(apiLimiter);
 
 // ─── Route Mounts ─────────────────────────
 router.use('/users', userRoutes);
+router.use('/members', memberRoutes);
+router.use('/events', eventRoutes);
+router.use('/notices', noticeRoutes);
+router.use('/gallery', galleryRoutes);
+router.use('/notifications', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/webhooks', webhookRoutes);
 
@@ -23,6 +33,11 @@ router.get('/', (_req, res) => {
     endpoints: {
       health: '/health',
       users: '/api/v1/users',
+      members: '/api/v1/members',
+      events: '/api/v1/events',
+      notices: '/api/v1/notices',
+      gallery: '/api/v1/gallery',
+      notifications: '/api/v1/notifications',
       admin: '/api/v1/admin',
       webhooks: '/api/v1/webhooks',
     },

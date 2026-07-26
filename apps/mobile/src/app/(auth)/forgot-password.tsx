@@ -14,7 +14,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth, useSignIn, useClerk } from '@clerk/expo';
+import { useAuth, useSignIn } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
@@ -23,7 +23,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function ForgotPasswordScreen() {
   const { isLoaded } = useAuth();
-  const { setActive } = useClerk();
   const { signIn, fetchStatus } = useSignIn();
   const router = useRouter();
 
@@ -53,10 +52,22 @@ export default function ForgotPasswordScreen() {
     setErrorMessage(null);
 
     try {
-      // Use Clerk resetPasswordEmailCode strategy
-      const response = await (signIn as any).resetPasswordEmailCode?.sendCode({
-        emailAddress: trimmedEmail,
+      const attempt = await signIn.create({
+        identifier: trimmedEmail,
       });
+
+      if (attempt?.error) {
+        const err = attempt.error as any;
+        setErrorMessage(
+          err?.errors?.[0]?.longMessage ||
+            err?.errors?.[0]?.message ||
+            'Failed to start password reset. Please verify your email.',
+        );
+        return;
+      }
+
+      // Clerk requires an initialized sign-in attempt before sending a reset code.
+      const response = await signIn.resetPasswordEmailCode.sendCode();
 
       if (response?.error) {
         const err = response.error as any;
@@ -105,7 +116,7 @@ export default function ForgotPasswordScreen() {
 
     try {
       // Verify code
-      const verifyRes = await (signIn as any).resetPasswordEmailCode?.verifyCode({
+      const verifyRes = await signIn.resetPasswordEmailCode.verifyCode({
         code: trimmedCode,
       });
 
@@ -117,7 +128,7 @@ export default function ForgotPasswordScreen() {
       }
 
       // Submit new password
-      const passwordRes = await (signIn as any).resetPasswordEmailCode?.submitPassword({
+      const passwordRes = await signIn.resetPasswordEmailCode.submitPassword({
         password: trimmedPassword,
       });
 
@@ -129,10 +140,9 @@ export default function ForgotPasswordScreen() {
       }
 
       if (signIn.status === 'complete') {
-        if (signIn.createdSessionId && setActive) {
-          await setActive({ session: signIn.createdSessionId });
-        }
-        router.replace('/(member)/home');
+        await signIn.finalize({
+          navigate: () => router.replace('/'),
+        });
       } else {
         setSuccessMessage('Password reset successful! Please sign in with your new password.');
         router.replace('/(auth)/sign-in');

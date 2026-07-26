@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -8,6 +8,8 @@ import { errorHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes';
 
 const app = express();
+
+type RequestWithRawBody = Request & { rawBody?: Buffer };
 
 // ─── Security ─────────────────────────────
 app.use(helmet());
@@ -19,7 +21,18 @@ app.use(
 );
 
 // ─── Parsing ──────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+// Svix signs the original bytes, so retain them for the Clerk webhook before
+// JSON parsing. Re-serializing `req.body` changes the signed payload.
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, _res, buffer) => {
+      if ((req as Request).originalUrl === '/api/v1/webhooks/clerk') {
+        (req as RequestWithRawBody).rawBody = Buffer.from(buffer);
+      }
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Logging ──────────────────────────────
