@@ -49,6 +49,7 @@ export default function GalleryScreen() {
   // Full-Screen Viewer State
   const [viewerVisible, setViewerVisible] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isModalZoomed, setIsModalZoomed] = useState(false);
 
   const categoryPagerRef = useRef<FlatList>(null);
   const modalFlatListRef = useRef<FlatList>(null);
@@ -59,6 +60,7 @@ export default function GalleryScreen() {
   const handleBackNavigation = useCallback(() => {
     if (viewerVisible) {
       setViewerVisible(false);
+      setIsModalZoomed(false);
       return true;
     }
     if (isSearching) {
@@ -235,6 +237,7 @@ export default function GalleryScreen() {
   const handleCardPress = (item: GalleryItemData) => {
     const idx = activeFilteredItems.findIndex((g) => g.id === item.id);
     setSelectedIndex(idx >= 0 ? idx : 0);
+    setIsModalZoomed(false);
     setViewerVisible(true);
   };
 
@@ -435,7 +438,7 @@ export default function GalleryScreen() {
         )}
       </View>
 
-      {/* Full-Screen Gallery Image Viewer Modal with Swiper + Working Pinch Zoom */}
+      {/* Full-Screen Gallery Image Viewer Modal with Dynamic Swiper Lock for 100% Smooth Pinch Zoom */}
       <Modal
         visible={viewerVisible}
         transparent
@@ -467,13 +470,14 @@ export default function GalleryScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Horizontal Image Swiper with Working PinchZoomImage */}
+            {/* Horizontal Image Swiper (Disabled during zoom to eliminate gesture conflicts) */}
             <FlatList
               ref={modalFlatListRef}
               data={activeFilteredItems}
               keyExtractor={(item) => item.id}
               horizontal
               pagingEnabled
+              scrollEnabled={!isModalZoomed}
               initialScrollIndex={selectedIndex}
               getItemLayout={(_, index) => ({
                 length: SCREEN_WIDTH,
@@ -495,6 +499,7 @@ export default function GalleryScreen() {
                       height: 1200,
                       crop: 'fit',
                     })}
+                    onZoomStateChange={setIsModalZoomed}
                   />
                 </View>
               )}
