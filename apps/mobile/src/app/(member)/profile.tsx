@@ -11,6 +11,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
@@ -48,6 +49,24 @@ export default function ProfileScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Android Hardware Back Navigation Handler
+  useEffect(() => {
+    const onBackPress = () => {
+      if (activeModal) {
+        setActiveModal(null);
+        return true;
+      }
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [activeModal, router]);
 
   // Form States
   const [firstName, setFirstName] = useState('');

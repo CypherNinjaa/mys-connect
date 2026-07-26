@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { useAuth, useUser, useSignIn } from '@clerk/expo';
 import { useRouter } from 'expo-router';
@@ -21,6 +22,20 @@ export default function ChangePasswordScreen() {
   const { getToken } = useAuth();
   const { signIn } = useSignIn();
   const router = useRouter();
+
+  // Android Hardware Back Navigation Handler
+  useEffect(() => {
+    const onBackPress = () => {
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [router]);
 
   const [mode, setMode] = useState<'update' | 'forgot_code'>('update');
   const [currentPassword, setCurrentPassword] = useState('');

@@ -9,8 +9,10 @@ import {
   RefreshControl,
   Dimensions,
   Modal,
+  BackHandler,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
@@ -23,6 +25,7 @@ type Category = 'All' | 'Events' | 'Celebrations' | 'Others';
 
 export default function GalleryScreen() {
   const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<Category>('All');
   const [albums, setAlbums] = useState<any[]>([]);
   const [selectedAlbum, setSelectedAlbum] = useState<any | null>(null);
@@ -30,6 +33,24 @@ export default function GalleryScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Android Hardware Back Navigation Handler
+  useEffect(() => {
+    const onBackPress = () => {
+      if (selectedAlbum) {
+        setSelectedAlbum(null);
+        return true;
+      }
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [selectedAlbum, router]);
 
   const fetchAlbums = async () => {
     try {

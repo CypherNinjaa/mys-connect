@@ -7,8 +7,10 @@ import {
   StyleSheet,
   RefreshControl,
   Modal,
+  BackHandler,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
@@ -18,11 +20,30 @@ type Category = 'ALL' | 'GENERAL' | 'IMPORTANT' | 'CIRCULAR';
 
 export default function NoticesScreen() {
   const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<Category>('ALL');
   const [notices, setNotices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<any | null>(null);
+
+  // Android Hardware Back Navigation Handler
+  useEffect(() => {
+    const onBackPress = () => {
+      if (selectedNotice) {
+        setSelectedNotice(null);
+        return true;
+      }
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [selectedNotice, router]);
 
   const fetchNotices = async () => {
     try {

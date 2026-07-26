@@ -8,8 +8,10 @@ import {
   StyleSheet,
   Image,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
@@ -19,11 +21,26 @@ const CITIES = ['All', 'Jaipur', 'Jodhpur', 'Kota', 'Udaipur', 'Ranchi'];
 
 export default function MemberDirectoryScreen() {
   const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [activeCity, setActiveCity] = useState('All');
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Android Hardware Back Navigation Handler
+  useEffect(() => {
+    const onBackPress = () => {
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [router]);
 
   const fetchMembers = async () => {
     try {

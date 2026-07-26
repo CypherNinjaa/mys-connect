@@ -100,7 +100,15 @@ export default function MemberLayout() {
           tabBarIcon: ({ color }) => <Ionicons name="person-outline" size={22} color={color} />,
         }}
       />
-      {/* Hidden sub-routes inside member layout */}
+
+      {/* Hidden sub-routes inside member layout — NOT shown on bottom tab bar */}
+      <Tabs.Screen
+        name="change-password"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
       <Tabs.Screen
         name="directory"
         options={{
