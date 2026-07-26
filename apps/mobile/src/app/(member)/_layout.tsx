@@ -78,7 +78,7 @@ export default function MemberLayout() {
       <Tabs.Screen
         name="gallery"
         options={{
-          title: 'Gallery',
+          headerShown: false,
           tabBarLabel: 'Gallery',
           tabBarIcon: ({ color }) => <Ionicons name="images-outline" size={22} color={color} />,
         }}

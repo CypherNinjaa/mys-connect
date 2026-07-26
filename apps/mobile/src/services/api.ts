@@ -219,6 +219,22 @@ export class ApiService {
   /**
    * Gallery API
    */
+  static async getGallery(token?: string, category?: string, search?: string, page = 1, limit = 100) {
+    const params = new URLSearchParams();
+    if (category && category !== 'All') params.append('category', category);
+    if (search) params.append('search', search);
+    params.append('page', String(page));
+    params.append('limit', String(limit));
+
+    const res = await fetch(`${API.baseUrl}/gallery?${params.toString()}`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to fetch gallery items');
+    return data.data;
+  }
+
   static async getAlbums(token: string) {
     const res = await fetch(`${API.baseUrl}/gallery/albums`, {
       method: 'GET',

@@ -226,6 +226,114 @@ async function main() {
   }
   console.log(`  ✅ Seeded ${events.length} home carousel & upcoming events`);
 
+  // ─── 5. Gallery Albums & Photo Items ───────────────────────────────────────
+  const galleryAlbums = [
+    {
+      title: 'Mahesh Navami Mahotsav Celebrations',
+      description: 'Grand cultural celebration photos, deep daan, and aarti.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
+      isPublished: true,
+      createdById: adminUser.id,
+      photos: [
+        {
+          imageUrl: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
+          caption: 'Executive Committee Lighting Lamp Ceremony',
+        },
+        {
+          imageUrl: 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80',
+          caption: 'Mahesh Navami Community Delegation Gathering',
+        },
+      ],
+    },
+    {
+      title: 'Annual Executive Committee Meeting',
+      description: 'Executive committee annual conference and lamp lighting.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80',
+      isPublished: true,
+      createdById: adminUser.id,
+      photos: [
+        {
+          imageUrl: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80',
+          caption: 'MYS Youth Executive Committee Delegation',
+        },
+        {
+          imageUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=800&q=80',
+          caption: 'Annual Strategic Planning Meeting',
+        },
+      ],
+    },
+    {
+      title: 'Blood Donation Camp Ranchi',
+      description: 'Community members participating in voluntary blood donation.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&w=800&q=80',
+      isPublished: true,
+      createdById: adminUser.id,
+      photos: [
+        {
+          imageUrl: 'https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&w=800&q=80',
+          caption: 'Voluntary Blood Donors Recognition Award',
+        },
+        {
+          imageUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=800&q=80',
+          caption: 'Medical Team & Volunteers Team Photo',
+        },
+      ],
+    },
+    {
+      title: 'Diwali Cultural Night & Sneh Milan',
+      description: 'Festive cultural performances, traditional feast, and music.',
+      coverImageUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80',
+      isPublished: true,
+      createdById: adminUser.id,
+      photos: [
+        {
+          imageUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80',
+          caption: 'Diwali Sneh Milan Musical Night',
+        },
+      ],
+    },
+  ];
+
+  for (const albumData of galleryAlbums) {
+    const existing = await prisma.album.findFirst({
+      where: { title: albumData.title },
+    });
+
+    if (existing) {
+      await prisma.album.update({
+        where: { id: existing.id },
+        data: {
+          description: albumData.description,
+          coverImageUrl: albumData.coverImageUrl,
+          isPublished: true,
+        },
+      });
+    } else {
+      const created = await prisma.album.create({
+        data: {
+          title: albumData.title,
+          description: albumData.description,
+          coverImageUrl: albumData.coverImageUrl,
+          isPublished: true,
+          createdById: adminUser.id,
+        },
+      });
+
+      for (let i = 0; i < albumData.photos.length; i++) {
+        const photo = albumData.photos[i];
+        await prisma.albumPhoto.create({
+          data: {
+            albumId: created.id,
+            imageUrl: photo.imageUrl,
+            caption: photo.caption,
+            sortOrder: i + 1,
+          },
+        });
+      }
+    }
+  }
+  console.log(`  ✅ Seeded ${galleryAlbums.length} gallery albums & photos`);
+
   console.log('🎉 Seed completed successfully!');
 }
 

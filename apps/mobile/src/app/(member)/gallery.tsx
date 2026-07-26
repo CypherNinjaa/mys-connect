@@ -1,44 +1,60 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
+  TextInput,
+  FlatList,
   TouchableOpacity,
   StyleSheet,
-  Image,
   RefreshControl,
-  Dimensions,
+  SafeAreaView,
+  StatusBar,
   Modal,
+  Image,
+  Platform,
   BackHandler,
+  Alert,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
+import { GalleryCacheManager } from '../../services/galleryCacheManager';
+import { GalleryCard, GalleryItemData } from '../../components/gallery/GalleryCard';
 import { SkeletonItem } from '../../components/ui/SkeletonLoader';
+import { downloadCloudinaryImage, buildCloudinaryUrl } from '../../utils/cloudinary';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - Spacing.md * 3) / 2;
+type CategoryTab = 'All' | 'Events' | 'Celebrations' | 'Others';
 
-type Category = 'All' | 'Events' | 'Celebrations' | 'Others';
+const CATEGORY_TABS: CategoryTab[] = ['All', 'Events', 'Celebrations', 'Others'];
 
 export default function GalleryScreen() {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken } = useAuth();
   const router = useRouter();
-  const [activeCategory, setActiveCategory] = useState<Category>('All');
-  const [albums, setAlbums] = useState<any[]>([]);
-  const [selectedAlbum, setSelectedAlbum] = useState<any | null>(null);
-  const [albumPhotos, setAlbumPhotos] = useState<any[]>([]);
+
+  const [activeCategory, setActiveCategory] = useState<CategoryTab>('All');
+  const [allGalleryItems, setAllGalleryItems] = useState<GalleryItemData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<GalleryItemData | null>(null);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
 
   // Android Hardware Back Navigation Handler
   useEffect(() => {
     const onBackPress = () => {
-      if (selectedAlbum) {
-        setSelectedAlbum(null);
+      if (selectedPhoto) {
+        setSelectedPhoto(null);
+        return true;
+      }
+      if (isSearching) {
+        setIsSearching(false);
+        setSearchQuery('');
+        setDebouncedQuery('');
         return true;
       }
       if (router.canGoBack()) {
@@ -50,269 +66,593 @@ export default function GalleryScreen() {
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => subscription.remove();
-  }, [selectedAlbum, router]);
+  }, [selectedPhoto, isSearching, router]);
 
-  const fetchAlbums = async () => {
-    try {
-      if (isSignedIn) {
-        const token = await getToken();
-        if (token) {
-          const res = await ApiService.getAlbums(token);
-          setAlbums(res || []);
+  // Debounce search query (300ms) to avoid unnecessary operations
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Initial Data Fetch & Client Cache Retrieval
+  const loadGalleryData = useCallback(
+    async (isForceRefresh = false) => {
+      // 1. Check local in-memory cache if not forcing refresh
+      if (!isForceRefresh) {
+        const cached = GalleryCacheManager.getCachedData();
+        if (cached && cached.items && cached.items.length > 0) {
+          setAllGalleryItems(cached.items);
+          setLoading(false);
+          setRefreshing(false);
+          return;
         }
       }
-    } catch (err) {
-      console.error('Fetch albums error:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+
+      if (isForceRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      setHasError(false);
+      setErrorMessage(null);
+      setCooldownMessage(null);
+
+      try {
+        const token = (await getToken()) || undefined;
+        // Fetch up to 100 gallery items across all categories for client-side caching & instant tab filtering
+        const res = await ApiService.getGallery(token, undefined, undefined, 1, 100);
+
+        if (res && Array.isArray(res.items) && res.items.length > 0) {
+          setAllGalleryItems(res.items);
+          GalleryCacheManager.setCachedData({ items: res.items, albums: res.albums || [] });
+        } else {
+          // Fallback to sample photos if backend returns empty
+          const sampleItems: GalleryItemData[] = [
+            {
+              id: 'g-1',
+              title: 'Executive Committee Meeting',
+              category: 'Events',
+              imageUrl:
+                'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80',
+            },
+            {
+              id: 'g-2',
+              title: 'Mahesh Navami Aarti',
+              category: 'Celebrations',
+              imageUrl:
+                'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
+            },
+            {
+              id: 'g-3',
+              title: 'Blood Donation Drive Volunteers',
+              category: 'Others',
+              imageUrl:
+                'https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&w=800&q=80',
+            },
+            {
+              id: 'g-4',
+              title: 'Diwali Sneh Milan Musical Night',
+              category: 'Celebrations',
+              imageUrl:
+                'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80',
+            },
+            {
+              id: 'g-5',
+              title: 'Youth Leadership Keynote Session',
+              category: 'Events',
+              imageUrl:
+                'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=800&q=80',
+            },
+            {
+              id: 'g-6',
+              title: 'Annual General Assembly',
+              category: 'Events',
+              imageUrl:
+                'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80',
+            },
+          ];
+          setAllGalleryItems(sampleItems);
+          GalleryCacheManager.setCachedData({ items: sampleItems, albums: [] });
+        }
+      } catch (err: any) {
+        console.error('Fetch gallery error:', err);
+        setHasError(true);
+        setErrorMessage(err.message || 'Could not load gallery images');
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [getToken]
+  );
 
   useEffect(() => {
-    if (isSignedIn) {
-      void fetchAlbums();
-    } else {
-      setLoading(false);
-    }
-  }, [isSignedIn]);
+    void loadGalleryData(false);
+  }, [loadGalleryData]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    void fetchAlbums();
+  // Rate-Limited Manual Pull-to-Refresh
+  const handleRefresh = () => {
+    const { allowed, remainingSeconds } = GalleryCacheManager.canManualRefresh();
+    if (!allowed) {
+      setRefreshing(false);
+      setCooldownMessage(`Already up to date. Please wait ${remainingSeconds}s before refreshing again.`);
+      setTimeout(() => setCooldownMessage(null), 3000);
+      return;
+    }
+
+    GalleryCacheManager.recordManualRefresh();
+    void loadGalleryData(true);
   };
 
-  const handleOpenAlbum = async (album: any) => {
-    setSelectedAlbum(album);
-    setLoadingPhotos(true);
-    try {
-      const token = await getToken();
-      if (token) {
-        const fullAlbum = await ApiService.getAlbumById(token, album.id);
-        setAlbumPhotos(fullAlbum?.photos || []);
+  // Client-side filtering by category & search query (0 API requests)
+  const filteredGalleryItems = useMemo(() => {
+    return allGalleryItems.filter((item) => {
+      // Category Filter
+      let matchesCategory = true;
+      if (activeCategory !== 'All') {
+        matchesCategory = item.category?.toLowerCase() === activeCategory.toLowerCase();
       }
-    } catch {
-      setAlbumPhotos([]);
-    } finally {
-      setLoadingPhotos(false);
+
+      if (!matchesCategory) return false;
+
+      // Search Query Filter
+      if (debouncedQuery.trim()) {
+        const q = debouncedQuery.trim().toLowerCase();
+        const titleMatch = item.title?.toLowerCase().includes(q);
+        const albumMatch = item.albumTitle?.toLowerCase().includes(q);
+        const categoryMatch = item.category?.toLowerCase().includes(q);
+        return titleMatch || albumMatch || categoryMatch;
+      }
+
+      return true;
+    });
+  }, [allGalleryItems, activeCategory, debouncedQuery]);
+
+  const handleCardPress = (item: GalleryItemData) => {
+    setSelectedPhoto(item);
+  };
+
+  const handleDownloadPhoto = async (photo: GalleryItemData) => {
+    try {
+      const fullResUrl = buildCloudinaryUrl(photo.imageUrl, { quality: 'auto', format: 'auto' });
+      await downloadCloudinaryImage(fullResUrl, `mys_gallery_${photo.id}.jpg`);
+    } catch (err: any) {
+      Alert.alert('Download Error', err.message || 'Could not download photo');
     }
   };
+
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 12;
 
   return (
-    <View style={styles.container}>
-      {/* Category Tabs Header — Matching Wireframe 08 */}
-      <View style={styles.tabContainer}>
-        {(['All', 'Events', 'Celebrations', 'Others'] as Category[]).map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            style={[styles.tabButton, activeCategory === cat && styles.tabButtonActive]}
-            onPress={() => setActiveCategory(cat)}
-          >
-            <Text style={[styles.tabText, activeCategory === cat && styles.tabTextActive]}>
-              {cat}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor="#6B1D2A" />
 
-      {/* Album Grid — 2 Columns per Wireframe 08 */}
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary[500]]} />}
-      >
-        {loading ? (
-          <View style={styles.gridRow}>
-            <SkeletonItem width={CARD_WIDTH} height={140} borderRadius={12} style={{ marginBottom: 12 }} />
-            <SkeletonItem width={CARD_WIDTH} height={140} borderRadius={12} style={{ marginBottom: 12 }} />
-            <SkeletonItem width={CARD_WIDTH} height={140} borderRadius={12} style={{ marginBottom: 12 }} />
-            <SkeletonItem width={CARD_WIDTH} height={140} borderRadius={12} style={{ marginBottom: 12 }} />
-          </View>
-        ) : albums.length > 0 ? (
-          <View style={styles.gridRow}>
-            {albums.map((album) => (
+      {/* Maroon Header matching wireframe */}
+      <View style={[styles.headerContainer, { paddingTop: statusBarHeight + 8 }]}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          <Text style={styles.headerTitle}>Gallery</Text>
+
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => {
+              if (isSearching) {
+                setIsSearching(false);
+                setSearchQuery('');
+                setDebouncedQuery('');
+              } else {
+                setIsSearching(true);
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name={isSearching ? 'close' : 'search'} size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Collapsible Search Input */}
+        {isSearching && (
+          <View style={styles.searchBarWrapper}>
+            <Ionicons name="search-outline" size={18} color="#718096" style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by photo title or album..."
+              placeholderTextColor="#A0AEC0"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            {searchQuery.length > 0 && (
               <TouchableOpacity
-                key={album.id}
-                style={styles.albumCard}
-                onPress={() => handleOpenAlbum(album)}
+                onPress={() => {
+                  setSearchQuery('');
+                  setDebouncedQuery('');
+                }}
               >
-                <Image
-                  source={
-                    album.coverImageUrl
-                      ? { uri: album.coverImageUrl }
-                      : require('../../../assets/images/mys-logo.jpg')
-                  }
-                  style={styles.albumCover}
-                />
-                <View style={styles.albumMeta}>
-                  <Text style={styles.albumTitle} numberOfLines={1}>
-                    {album.title}
-                  </Text>
-                  <Text style={styles.photoCount}>
-                    {album._count?.photos || 0} Photos
-                  </Text>
-                </View>
+                <Ionicons name="close-circle" size={18} color="#A0AEC0" />
               </TouchableOpacity>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="images-outline" size={48} color={Colors.neutral[400]} />
-            <Text style={styles.emptyTitle}>No photo albums yet</Text>
-            <Text style={styles.emptySub}>Event photos will appear here after community celebrations</Text>
+            )}
           </View>
         )}
-      </ScrollView>
+      </View>
 
-      {/* Album Photos Viewer Modal */}
-      <Modal visible={Boolean(selectedAlbum)} animationType="slide" transparent={false}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setSelectedAlbum(null)}>
-              <Ionicons name="close" size={26} color={Colors.neutral[0]} />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle} numberOfLines={1}>
-              {selectedAlbum?.title}
-            </Text>
-            <View style={{ width: 26 }} />
+      {/* Main Content Area */}
+      <View style={styles.body}>
+        {/* Category Tab Segment Bar — Matching Wireframe */}
+        <View style={styles.tabBarContainer}>
+          {CATEGORY_TABS.map((tab) => {
+            const isActive = activeCategory === tab;
+            return (
+              <TouchableOpacity
+                key={tab}
+                style={styles.tabItem}
+                onPress={() => {
+                  if (activeCategory !== tab) {
+                    setActiveCategory(tab);
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
+                  {tab}
+                </Text>
+                {isActive && <View style={styles.activeUnderline} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {/* Refresh Cooldown Toast Notice */}
+        {cooldownMessage && (
+          <View style={styles.cooldownBanner}>
+            <Ionicons name="information-circle" size={18} color="#2B6CB0" style={{ marginRight: 6 }} />
+            <Text style={styles.cooldownText}>{cooldownMessage}</Text>
           </View>
+        )}
 
-          <ScrollView contentContainerStyle={styles.modalScroll}>
-            {loadingPhotos ? (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-                <Text style={{ color: '#A0AEC0' }}>Loading album photos...</Text>
-              </View>
-            ) : albumPhotos.length > 0 ? (
-              <View style={styles.photoGrid}>
-                {albumPhotos.map((photo) => (
-                  <Image key={photo.id} source={{ uri: photo.imageUrl }} style={styles.photoThumb} />
-                ))}
-              </View>
-            ) : (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <Text style={{ color: '#A0AEC0' }}>No photos uploaded in this album yet.</Text>
+        {/* Error Banner with Retry */}
+        {hasError && (
+          <TouchableOpacity
+            style={styles.errorBanner}
+            onPress={() => loadGalleryData(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="alert-circle-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorBannerTitle}>Unable to load gallery</Text>
+              <Text style={styles.errorBannerSub}>
+                {errorMessage || 'Network connection issue. Tap to retry.'}
+              </Text>
+            </View>
+            <Ionicons name="refresh" size={18} color="#C53030" />
+          </TouchableOpacity>
+        )}
+
+        {/* Loading Skeletons */}
+        {loading ? (
+          <View style={styles.skeletonGridContainer}>
+            <View style={styles.skeletonRow}>
+              <SkeletonItem width="48.5%" height={165} borderRadius={16} />
+              <SkeletonItem width="48.5%" height={165} borderRadius={16} />
+            </View>
+            <View style={styles.skeletonRow}>
+              <SkeletonItem width="48.5%" height={165} borderRadius={16} />
+              <SkeletonItem width="48.5%" height={165} borderRadius={16} />
+            </View>
+          </View>
+        ) : (
+          <FlatList
+            data={filteredGalleryItems}
+            keyExtractor={(item) => item.id}
+            numColumns={2}
+            columnWrapperStyle={styles.columnWrapper}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                colors={['#6B1D2A']}
+                tintColor="#6B1D2A"
+              />
+            }
+            renderItem={({ item }) => (
+              <GalleryCard item={item} onPress={handleCardPress} />
+            )}
+            ListEmptyComponent={
+              !hasError ? (
+                <View style={styles.emptyStateBox}>
+                  <Ionicons name="images-outline" size={48} color="#CBD5E0" />
+                  <Text style={styles.emptyTitle}>No photos found</Text>
+                  <Text style={styles.emptySub}>
+                    {debouncedQuery
+                      ? `No images matching "${debouncedQuery}".`
+                      : `There are currently no photos in the "${activeCategory}" category.`}
+                  </Text>
+                </View>
+              ) : null
+            }
+          />
+        )}
+      </View>
+
+      {/* Full-Screen High-Resolution Image Viewer Modal */}
+      <Modal visible={Boolean(selectedPhoto)} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalSafeArea}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setSelectedPhoto(null)} style={styles.modalBtn}>
+                <Ionicons name="close" size={26} color="#FFFFFF" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {selectedPhoto?.title || 'Gallery Photo'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => selectedPhoto && handleDownloadPhoto(selectedPhoto)}
+                style={styles.modalBtn}
+              >
+                <Ionicons name="download-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Modal Image Display */}
+            {selectedPhoto && (
+              <View style={styles.modalImageWrapper}>
+                <Image
+                  source={{
+                    uri: buildCloudinaryUrl(selectedPhoto.imageUrl, {
+                      quality: 'auto',
+                      format: 'auto',
+                    }),
+                  }}
+                  style={styles.fullImage}
+                  resizeMode="contain"
+                />
               </View>
             )}
-          </ScrollView>
+
+            {/* Modal Caption Footer */}
+            {selectedPhoto && (
+              <View style={styles.modalFooter}>
+                <Text style={styles.modalCaptionTitle}>{selectedPhoto.title}</Text>
+                <View style={styles.badgeRow}>
+                  <View style={styles.categoryBadge}>
+                    <Text style={styles.categoryBadgeText}>{selectedPhoto.category}</Text>
+                  </View>
+                </View>
+              </View>
+            )}
+          </SafeAreaView>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#6B1D2A',
+  },
+  headerContainer: {
+    backgroundColor: '#6B1D2A',
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 44,
+  },
+  headerBtn: {
+    padding: 6,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  searchBarWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1A202C',
+  },
+  body: {
     flex: 1,
     backgroundColor: '#F8F9FA',
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
-  tabContainer: {
+  tabBarContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.neutral[0],
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border.light,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-    marginHorizontal: 2,
-  },
-  tabButtonActive: {
-    backgroundColor: Colors.primary[500],
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.text.secondary,
-  },
-  tabTextActive: {
-    color: Colors.neutral[0],
-    fontWeight: '700',
-  },
-  scrollContent: {
-    padding: Spacing.md,
-  },
-  gridRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  albumCard: {
-    width: CARD_WIDTH,
-    backgroundColor: Colors.neutral[0],
-    borderRadius: Spacing.radiusMd,
-    overflow: 'hidden',
-    marginBottom: Spacing.md,
-    elevation: 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#EDF2F7',
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  albumCover: {
-    width: '100%',
-    height: 120,
-    backgroundColor: Colors.neutral[200],
-  },
-  albumMeta: {
-    padding: 10,
-  },
-  albumTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: Colors.text.primary,
-  },
-  photoCount: {
-    fontSize: 11,
-    color: Colors.text.tertiary,
-    marginTop: 2,
-  },
-  emptyContainer: {
+  tabItem: {
+    flex: 1,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    position: 'relative',
+  },
+  tabLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#718096',
+  },
+  activeTabLabel: {
+    color: '#6B1D2A',
+    fontWeight: '800',
+  },
+  activeUnderline: {
+    position: 'absolute',
+    bottom: 2,
+    width: '40%',
+    height: 3,
+    backgroundColor: '#6B1D2A',
+    borderRadius: 2,
+  },
+  columnWrapper: {
+    justifyContent: 'space-between',
+  },
+  listContent: {
+    paddingBottom: 40,
+  },
+  skeletonGridContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  cooldownBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF8FF',
+    borderWidth: 1,
+    borderColor: '#BEE3F8',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+  },
+  cooldownText: {
+    fontSize: 12.5,
+    color: '#2B6CB0',
+    fontWeight: '600',
+    flex: 1,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  errorBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#9B2C2C',
+  },
+  errorBannerSub: {
+    fontSize: 11.5,
+    color: '#C53030',
+    marginTop: 2,
+  },
+  emptyStateBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#F0F4F8',
+    elevation: 2,
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: Colors.text.primary,
+    fontWeight: '800',
+    color: '#2D3748',
     marginTop: 12,
   },
   emptySub: {
     fontSize: 13,
-    color: Colors.text.tertiary,
-    marginTop: 4,
+    color: '#718096',
+    marginTop: 6,
     textAlign: 'center',
+    lineHeight: 18,
   },
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: '#1A202C',
+    backgroundColor: 'rgba(0,0,0,0.95)',
+  },
+  modalSafeArea: {
+    flex: 1,
+    justifyContent: 'space-between',
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 44,
-    paddingBottom: 16,
-    backgroundColor: '#2D3748',
+    paddingVertical: 12,
   },
-  modalTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  modalScroll: {
+  modalBtn: {
     padding: 8,
   },
-  photoGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  modalTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginHorizontal: 10,
   },
-  photoThumb: {
-    width: (width - 32) / 2,
-    height: 140,
-    borderRadius: 8,
+  modalImageWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalFooter: {
+    padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalCaptionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+  },
+  categoryBadge: {
+    backgroundColor: '#6B1D2A',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  categoryBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
