@@ -234,8 +234,6 @@ export default function ProfileScreen() {
           <View style={styles.menuIconCircle}>
             <Ionicons name="person-outline" size={20} color={Colors.primary[500]} />
           </View>
-
-```text
           <View style={styles.menuTextContent}>
             <Text style={styles.menuTitle}>Personal Information</Text>
             <Text style={styles.menuSub}>Name, Gender, Blood Group</Text>
