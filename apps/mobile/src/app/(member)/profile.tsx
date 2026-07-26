@@ -15,7 +15,6 @@ import {
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService, RegisterProfileData } from '../../services/api';
 import { ProfileSkeleton } from '../../components/ui/SkeletonLoader';
@@ -38,7 +37,7 @@ const GENDERS = [
   { label: 'Other', value: 'OTHER' },
 ];
 
-export function ProfileScreen() {
+export default function ProfileScreen() {
   const { getToken, isSignedIn, signOut } = useAuth();
   const router = useRouter();
 
@@ -124,14 +123,21 @@ export function ProfileScreen() {
     }
   };
 
-  // Realtime GPS Location Fetch with Native Module Safety Guard
+  // Realtime GPS Location Fetch with safe dynamic require
   const handleFetchCurrentLocation = async () => {
     try {
       setIsLocating(true);
+      let Location: typeof import('expo-location') | null = null;
+      try {
+        Location = require('expo-location');
+      } catch {
+        Location = null;
+      }
+
       if (!Location || typeof Location.requestForegroundPermissionsAsync !== 'function') {
         Alert.alert(
-          'Location Module Native Setup',
-          'Expo Location native plugin added. Rebuilding Android dev client...'
+          'Location Module Required',
+          'GPS location permissions require native location support on this device environment.'
         );
         return;
       }
@@ -501,8 +507,6 @@ export function ProfileScreen() {
     </ScrollView>
   );
 }
-
-export default ProfileScreen;
 
 const styles = StyleSheet.create({
   container: {
