@@ -10,6 +10,9 @@ interface UpcomingEventCardProps {
 }
 
 export function UpcomingEventCard({ events, onEventPress, onViewAllPress }: UpcomingEventCardProps) {
+  // Display only 4 upcoming events maximum
+  const displayEvents = (events || []).slice(0, 4);
+
   return (
     <View style={styles.container}>
       <View style={styles.sectionHeader}>
@@ -21,42 +24,50 @@ export function UpcomingEventCard({ events, onEventPress, onViewAllPress }: Upco
         )}
       </View>
 
-      <View style={styles.listContainer}>
-        {events.map((event) => (
-          <TouchableOpacity
-            key={event.id}
-            style={styles.card}
-            onPress={() => onEventPress?.(event)}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: event.bgColor || '#FFEBF0' }]}>
-              <Ionicons
-                name={(event.iconName || 'pulse') as any}
-                size={26}
-                color={event.iconColor || '#E53E3E'}
-              />
-            </View>
-
-            <View style={styles.content}>
-              <Text style={styles.eventTitle} numberOfLines={1}>
-                {event.title}
-              </Text>
-
-              <View style={styles.infoRow}>
-                <Ionicons name="calendar-outline" size={14} color="#6B1D2A" style={styles.infoIcon} />
-                <Text style={styles.infoText}>{event.dateTime}</Text>
+      {displayEvents.length > 0 ? (
+        <View style={styles.listContainer}>
+          {displayEvents.map((event) => (
+            <TouchableOpacity
+              key={event.id}
+              style={styles.card}
+              onPress={() => onEventPress?.(event)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: event.bgColor || '#FFEBF0' }]}>
+                <Ionicons
+                  name={(event.iconName || 'pulse') as any}
+                  size={26}
+                  color={event.iconColor || '#E53E3E'}
+                />
               </View>
 
-              <View style={styles.infoRow}>
-                <Ionicons name="location-outline" size={14} color="#6B1D2A" style={styles.infoIcon} />
-                <Text style={styles.infoText} numberOfLines={1}>
-                  {event.venue}
+              <View style={styles.content}>
+                <Text style={styles.eventTitle} numberOfLines={1}>
+                  {event.title}
                 </Text>
+
+                <View style={styles.infoRow}>
+                  <Ionicons name="calendar-outline" size={14} color="#6B1D2A" style={styles.infoIcon} />
+                  <Text style={styles.infoText}>{event.dateTime}</Text>
+                </View>
+
+                <View style={styles.infoRow}>
+                  <Ionicons name="location-outline" size={14} color="#6B1D2A" style={styles.infoIcon} />
+                  <Text style={styles.infoText} numberOfLines={1}>
+                    {event.venue}
+                  </Text>
+                </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.emptyCard}>
+          <Ionicons name="calendar-outline" size={32} color="#A0AEC0" />
+          <Text style={styles.emptyTitle}>No Upcoming Events</Text>
+          <Text style={styles.emptySub}>Check back soon for new community events and meetings.</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -90,8 +101,6 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
-
-    // Soft drop shadow matching wireframe exactly
     borderWidth: 1,
     borderColor: '#F0F4F8',
     shadowColor: '#000',
@@ -99,6 +108,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 3,
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F0F4F8',
+    elevation: 2,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#2D3748',
+    marginTop: 8,
+  },
+  emptySub: {
+    fontSize: 12.5,
+    color: '#718096',
+    marginTop: 4,
+    textAlign: 'center',
   },
   iconCircle: {
     width: 56,

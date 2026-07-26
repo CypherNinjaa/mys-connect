@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
   View,
+  Text,
   ScrollView,
+  TouchableOpacity,
   StyleSheet,
   RefreshControl,
   SafeAreaView,
@@ -9,6 +11,7 @@ import {
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { ApiService } from '../../services/api';
 import {
   HomeService,
@@ -33,27 +36,37 @@ export default function HomeScreen() {
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const greeting = HomeService.getGreeting();
 
   const loadData = async () => {
-    try {
-      const mockFeatured = await HomeService.getFeaturedEvents();
-      const mockUpcoming = await HomeService.getUpcomingEvents();
+    setHasError(false);
+    setErrorMessage(null);
 
+    try {
       if (isSignedIn) {
         const token = await getToken();
         if (token) {
           const [userData, eventsRes] = await Promise.all([
-            ApiService.getMe(token).catch(() => null),
-            ApiService.getEvents(token, 'UPCOMING').catch(() => ({ events: [] })),
+            ApiService.getMe(token).catch((err) => {
+              console.warn('Get Me user error:', err?.message || err);
+              return null;
+            }),
+            ApiService.getEvents(token, 'UPCOMING').catch((err) => {
+              console.warn('Get Events API error:', err?.message || err);
+              return null;
+            }),
           ]);
 
           if (userData) setUser(userData);
 
-          // If backend returns real events, format and merge with mock defaults
-          if (eventsRes?.events && eventsRes.events.length > 0) {
-            const apiFeatured: FeaturedEvent[] = eventsRes.events.map((evt: any) => ({
+          if (eventsRes && Array.isArray(eventsRes.events)) {
+            const apiEvents = eventsRes.events;
+
+            // Format up to 4 featured events for carousel
+            const formattedFeatured: FeaturedEvent[] = apiEvents.slice(0, 4).map((evt: any) => ({
               id: evt.id,
               title: evt.title,
               date: evt.startDate
@@ -62,13 +75,17 @@ export default function HomeScreen() {
                     month: 'short',
                     year: 'numeric',
                   })
-                : '15 August 2026',
-              venue: evt.venue || 'Shree Maheshwari Bhawan, Jaipur',
-              image: evt.coverImageUrl || evt.bannerUrl || mockFeatured[0].image,
+                : 'Upcoming Date',
+              venue: evt.venue || 'Shree Maheshwari Bhawan',
+              image:
+                evt.coverImageUrl ||
+                evt.bannerUrl ||
+                'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80',
               actionText: 'Register Now',
             }));
 
-            const apiUpcoming: UpcomingEvent[] = eventsRes.events.map((evt: any) => ({
+            // Format up to 4 upcoming events for list
+            const formattedUpcoming: UpcomingEvent[] = apiEvents.slice(0, 4).map((evt: any) => ({
               id: evt.id,
               title: evt.title,
               dateTime: `${
@@ -78,7 +95,7 @@ export default function HomeScreen() {
                       month: 'short',
                       year: 'numeric',
                     })
-                  : '10 Nov 2026'
+                  : 'Upcoming'
               } | ${evt.startTime || '09:00 AM'}`,
               venue: evt.venue || 'Shree Maheshwari Bhawan',
               iconName: 'pulse',
@@ -86,25 +103,32 @@ export default function HomeScreen() {
               bgColor: '#FFEBF0',
             }));
 
-            setFeaturedEvents(apiFeatured.length > 0 ? apiFeatured : mockFeatured);
-            setUpcomingEvents(apiUpcoming.length > 0 ? apiUpcoming : mockUpcoming);
+            setFeaturedEvents(formattedFeatured);
+            setUpcomingEvents(formattedUpcoming);
           } else {
-            setFeaturedEvents(mockFeatured);
-            setUpcomingEvents(mockUpcoming);
+            // Fallback to mock data if backend returned null or invalid response
+            const mockFeatured = await HomeService.getFeaturedEvents();
+            const mockUpcoming = await HomeService.getUpcomingEvents();
+            setFeaturedEvents(mockFeatured.slice(0, 4));
+            setUpcomingEvents(mockUpcoming.slice(0, 4));
           }
-        } else {
-          setFeaturedEvents(mockFeatured);
-          setUpcomingEvents(mockUpcoming);
         }
       } else {
-        setFeaturedEvents(mockFeatured);
-        setUpcomingEvents(mockUpcoming);
+        const mockFeatured = await HomeService.getFeaturedEvents();
+        const mockUpcoming = await HomeService.getUpcomingEvents();
+        setFeaturedEvents(mockFeatured.slice(0, 4));
+        setUpcomingEvents(mockUpcoming.slice(0, 4));
       }
-    } catch (err) {
-      console.error('Home screen load error:', err);
-      // Graceful fallback to mock data
-      setFeaturedEvents(await HomeService.getFeaturedEvents());
-      setUpcomingEvents(await HomeService.getUpcomingEvents());
+    } catch (err: any) {
+      console.error('Home load error:', err);
+      setHasError(true);
+      setErrorMessage(err.message || 'Unable to connect to server');
+
+      // Safe fallback data so UI remains functional
+      const mockFeatured = await HomeService.getFeaturedEvents();
+      const mockUpcoming = await HomeService.getUpcomingEvents();
+      setFeaturedEvents(mockFeatured.slice(0, 4));
+      setUpcomingEvents(mockUpcoming.slice(0, 4));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -187,19 +211,33 @@ export default function HomeScreen() {
 
         {/* Main Content Area */}
         <View style={styles.contentPadding}>
-          {/* 2. Featured Event Carousel */}
+          {/* Network Error Notification Banner */}
+          {hasError && (
+            <TouchableOpacity style={styles.errorBanner} onPress={onRefresh} activeOpacity={0.8}>
+              <Ionicons name="wifi-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.errorBannerTitle}>Network Connection Notice</Text>
+                <Text style={styles.errorBannerSub}>
+                  {errorMessage || 'Showing cached data. Tap to refresh.'}
+                </Text>
+              </View>
+              <Ionicons name="refresh" size={18} color="#C53030" />
+            </TouchableOpacity>
+          )}
+
+          {/* 2. Featured Event Carousel (Max 4 Items Infinite) */}
           <EventCarousel
             events={featuredEvents}
             onRegisterPress={handleRegisterPress}
           />
 
-          {/* 3. Quick Access Grid */}
+          {/* 3. Quick Access Grid (Exactly 4 Items) */}
           <QuickAccessCard
             items={quickAccessItems}
             onItemPress={handleQuickAccessPress}
           />
 
-          {/* 4. Upcoming Events */}
+          {/* 4. Upcoming Events (Max 4 Items) */}
           <UpcomingEventCard
             events={upcomingEvents}
             onEventPress={handleUpcomingEventPress}
@@ -232,5 +270,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: -40,
+    marginBottom: 16,
+    zIndex: 10,
+  },
+  errorBannerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#9B2C2C',
+  },
+  errorBannerSub: {
+    fontSize: 11.5,
+    color: '#C53030',
+    marginTop: 2,
   },
 });

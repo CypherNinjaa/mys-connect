@@ -25,39 +25,57 @@ export function EventCarousel({ events, onRegisterPress }: EventCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
-  // Auto-scroll every 5 seconds
+  // Display max 4 items in carousel
+  const displayEvents = (events || []).slice(0, 4);
+
+  // Infinite smooth auto-scroll every 4 seconds
   useEffect(() => {
-    if (!events || events.length === 0) return;
+    if (displayEvents.length <= 1) return;
 
     const timer = setInterval(() => {
       setActiveIndex((prevIndex) => {
-        const nextIndex = (prevIndex + 1) % events.length;
-        flatListRef.current?.scrollToIndex({
-          index: nextIndex,
-          animated: true,
-        });
+        const nextIndex = (prevIndex + 1) % displayEvents.length;
+        try {
+          flatListRef.current?.scrollToIndex({
+            index: nextIndex,
+            animated: true,
+          });
+        } catch {
+          // Ignore index scroll out-of-range bounds
+        }
         return nextIndex;
       });
-    }, 5000);
+    }, 4000);
 
     return () => clearInterval(timer);
-  }, [events]);
+  }, [displayEvents.length]);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const slideSize = event.nativeEvent.layoutMeasurement.width;
-    const index = Math.round(event.nativeEvent.contentOffset.x / slideSize);
-    if (index >= 0 && index < events.length && index !== activeIndex) {
-      setActiveIndex(index);
+    if (slideSize > 0) {
+      const index = Math.round(event.nativeEvent.contentOffset.x / slideSize);
+      if (index >= 0 && index < displayEvents.length && index !== activeIndex) {
+        setActiveIndex(index);
+      }
     }
   };
 
-  if (!events || events.length === 0) return null;
+  if (displayEvents.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyCard}>
+          <Ionicons name="calendar-outline" size={32} color="#A0AEC0" />
+          <Text style={styles.emptyCardText}>No featured events available right now.</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <FlatList
         ref={flatListRef}
-        data={events}
+        data={displayEvents}
         keyExtractor={(item) => item.id}
         horizontal
         pagingEnabled
@@ -66,6 +84,11 @@ export function EventCarousel({ events, onRegisterPress }: EventCarouselProps) {
         scrollEventThrottle={16}
         snapToInterval={CAROUSEL_WIDTH}
         decelerationRate="fast"
+        getItemLayout={(_, index) => ({
+          length: CAROUSEL_WIDTH,
+          offset: CAROUSEL_WIDTH * index,
+          index,
+        })}
         renderItem={({ item }) => (
           <View style={styles.cardContainer}>
             <View style={styles.card}>
@@ -105,7 +128,7 @@ export function EventCarousel({ events, onRegisterPress }: EventCarouselProps) {
 
       {/* Pagination Dots */}
       <View style={styles.paginationRow}>
-        {events.map((_, idx) => (
+        {displayEvents.map((_, idx) => (
           <View
             key={idx}
             style={[
@@ -121,12 +144,11 @@ export function EventCarousel({ events, onRegisterPress }: EventCarouselProps) {
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: -54, // Overlap the maroon header exactly like wireframe
+    marginTop: -54,
     marginBottom: 20,
   },
   cardContainer: {
     width: CAROUSEL_WIDTH,
-    paddingHorizontal: 0,
   },
   card: {
     backgroundColor: '#FFFFFF',
@@ -136,8 +158,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 180,
-
-    // Soft drop shadow matching wireframe
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -145,6 +165,22 @@ const styles = StyleSheet.create({
     elevation: 5,
     borderWidth: 1,
     borderColor: '#F0F4F8',
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F0F4F8',
+    elevation: 3,
+  },
+  emptyCardText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#718096',
+    marginTop: 8,
   },
   leftContent: {
     flex: 1,
