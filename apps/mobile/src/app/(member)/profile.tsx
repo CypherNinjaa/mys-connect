@@ -339,7 +339,11 @@ export default function ProfileScreen() {
           </View>
           <View style={styles.menuTextContent}>
             <Text style={styles.menuTitle}>Address</Text>
-            <Text style={styles.menuSub}>{profile?.city?.name || 'Ranchi'}, Jharkhand</Text>
+            <Text style={styles.menuSub} numberOfLines={1}>
+              {[profile?.address, profile?.city?.name, profile?.pinCode ? `PIN: ${profile.pinCode}` : null]
+                .filter(Boolean)
+                .join(', ') || 'Add residential address'}
+            </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
         </TouchableOpacity>
