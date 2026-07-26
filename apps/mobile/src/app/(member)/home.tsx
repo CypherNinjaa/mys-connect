@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import {
   UpcomingEvent,
   MOCK_QUICK_ACCESS,
 } from '../../services/homeService';
+import { HomeCacheManager } from '../../services/homeCacheManager';
 import { HomeHeader } from '../../components/home/HomeHeader';
 import { EventCarousel } from '../../components/home/EventCarousel';
 import { QuickAccessCard } from '../../components/home/QuickAccessCard';
@@ -38,110 +39,144 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
 
   const greeting = HomeService.getGreeting();
 
-  const loadData = async () => {
-    setHasError(false);
-    setErrorMessage(null);
+  const loadData = useCallback(
+    async (isForceRefresh = false) => {
+      // 1. Check local in-memory cache if not forcing refresh
+      if (!isForceRefresh) {
+        const cached = HomeCacheManager.getCachedData();
+        if (cached) {
+          setUser(cached.user);
+          setFeaturedEvents(cached.featuredEvents);
+          setUpcomingEvents(cached.upcomingEvents);
+          setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
 
-    try {
-      if (isSignedIn) {
-        const token = await getToken();
-        if (token) {
-          const [userData, eventsRes] = await Promise.all([
-            ApiService.getMe(token).catch((err) => {
-              console.warn('Get Me user error:', err?.message || err);
-              return null;
-            }),
-            ApiService.getEvents(token, 'UPCOMING').catch((err) => {
-              console.warn('Get Events API error:', err?.message || err);
-              return null;
-            }),
-          ]);
+      if (isForceRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
-          if (userData) setUser(userData);
+      setHasError(false);
+      setErrorMessage(null);
+      setCooldownMessage(null);
 
-          if (eventsRes && Array.isArray(eventsRes.events)) {
-            const apiEvents = eventsRes.events;
+      try {
+        const mockFeatured = await HomeService.getFeaturedEvents();
+        const mockUpcoming = await HomeService.getUpcomingEvents();
 
-            // Format up to 4 featured events for carousel
-            const formattedFeatured: FeaturedEvent[] = apiEvents.slice(0, 4).map((evt: any) => ({
-              id: evt.id,
-              title: evt.title,
-              date: evt.startDate
-                ? new Date(evt.startDate).toLocaleDateString('en-IN', {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                  })
-                : 'Upcoming Date',
-              venue: evt.venue || 'Shree Maheshwari Bhawan',
-              image:
-                evt.coverImageUrl ||
-                evt.bannerUrl ||
-                'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80',
-              actionText: 'Register Now',
-            }));
+        let fetchedUser: any = user;
+        let finalFeatured: FeaturedEvent[] = mockFeatured.slice(0, 4);
+        let finalUpcoming: UpcomingEvent[] = mockUpcoming.slice(0, 4);
 
-            // Format up to 4 upcoming events for list
-            const formattedUpcoming: UpcomingEvent[] = apiEvents.slice(0, 4).map((evt: any) => ({
-              id: evt.id,
-              title: evt.title,
-              dateTime: `${
-                evt.startDate
+        if (isSignedIn) {
+          const token = await getToken();
+          if (token) {
+            const [userData, eventsRes] = await Promise.all([
+              ApiService.getMe(token).catch((err) => {
+                console.warn('Home getMe error:', err?.message || err);
+                return null;
+              }),
+              ApiService.getEvents(token, 'UPCOMING', undefined, 1, 10).catch((err) => {
+                console.warn('Home getEvents error:', err?.message || err);
+                return null;
+              }),
+            ]);
+
+            if (userData) fetchedUser = userData;
+
+            if (eventsRes && Array.isArray(eventsRes.events) && eventsRes.events.length > 0) {
+              const apiEvents = eventsRes.events;
+
+              finalFeatured = apiEvents.slice(0, 4).map((evt: any) => ({
+                id: evt.id,
+                title: evt.title,
+                date: evt.startDate
                   ? new Date(evt.startDate).toLocaleDateString('en-IN', {
                       day: '2-digit',
                       month: 'short',
                       year: 'numeric',
                     })
-                  : 'Upcoming'
-              } | ${evt.startTime || '09:00 AM'}`,
-              venue: evt.venue || 'Shree Maheshwari Bhawan',
-              iconName: 'pulse',
-              iconColor: '#E53E3E',
-              bgColor: '#FFEBF0',
-            }));
+                  : 'Upcoming Date',
+                venue: evt.venue || 'Shree Maheshwari Bhawan',
+                image:
+                  evt.coverImageUrl ||
+                  evt.bannerUrl ||
+                  'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80',
+                actionText: 'Register Now',
+              }));
 
-            setFeaturedEvents(formattedFeatured);
-            setUpcomingEvents(formattedUpcoming);
-          } else {
-            // Fallback to mock data if backend returned null or invalid response
-            const mockFeatured = await HomeService.getFeaturedEvents();
-            const mockUpcoming = await HomeService.getUpcomingEvents();
-            setFeaturedEvents(mockFeatured.slice(0, 4));
-            setUpcomingEvents(mockUpcoming.slice(0, 4));
+              finalUpcoming = apiEvents.slice(0, 4).map((evt: any) => ({
+                id: evt.id,
+                title: evt.title,
+                dateTime: `${
+                  evt.startDate
+                    ? new Date(evt.startDate).toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                      })
+                    : 'Upcoming'
+                } | ${evt.startTime || '09:00 AM'}`,
+                venue: evt.venue || 'Shree Maheshwari Bhawan',
+                iconName: 'pulse',
+                iconColor: '#E53E3E',
+                bgColor: '#FFEBF0',
+              }));
+            }
           }
         }
-      } else {
+
+        setUser(fetchedUser);
+        setFeaturedEvents(finalFeatured);
+        setUpcomingEvents(finalUpcoming);
+
+        // Store in local cache
+        HomeCacheManager.setCachedData({
+          user: fetchedUser,
+          featuredEvents: finalFeatured,
+          upcomingEvents: finalUpcoming,
+        });
+      } catch (err: any) {
+        console.error('Home load error:', err);
+        setHasError(true);
+        setErrorMessage(err.message || 'Unable to connect to server');
+
         const mockFeatured = await HomeService.getFeaturedEvents();
         const mockUpcoming = await HomeService.getUpcomingEvents();
         setFeaturedEvents(mockFeatured.slice(0, 4));
         setUpcomingEvents(mockUpcoming.slice(0, 4));
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-    } catch (err: any) {
-      console.error('Home load error:', err);
-      setHasError(true);
-      setErrorMessage(err.message || 'Unable to connect to server');
-
-      // Safe fallback data so UI remains functional
-      const mockFeatured = await HomeService.getFeaturedEvents();
-      const mockUpcoming = await HomeService.getUpcomingEvents();
-      setFeaturedEvents(mockFeatured.slice(0, 4));
-      setUpcomingEvents(mockUpcoming.slice(0, 4));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    },
+    [isSignedIn, getToken, user]
+  );
 
   useEffect(() => {
-    void loadData();
+    void loadData(false);
   }, [isSignedIn]);
 
+  // Rate-Limited Manual Refresh
   const onRefresh = () => {
-    setRefreshing(true);
-    void loadData();
+    const { allowed, remainingSeconds } = HomeCacheManager.canManualRefresh();
+    if (!allowed) {
+      setRefreshing(false);
+      setCooldownMessage(`Already up to date. Please wait ${remainingSeconds}s before refreshing again.`);
+      setTimeout(() => setCooldownMessage(null), 3000);
+      return;
+    }
+
+    HomeCacheManager.recordManualRefresh();
+    void loadData(true);
   };
 
   const handleQuickAccessPress = (item: QuickAccessItem) => {
@@ -211,9 +246,17 @@ export default function HomeScreen() {
 
         {/* Main Content Area */}
         <View style={styles.contentPadding}>
+          {/* Refresh Cooldown Notification Toast */}
+          {cooldownMessage && (
+            <View style={styles.cooldownBanner}>
+              <Ionicons name="information-circle" size={18} color="#2B6CB0" style={{ marginRight: 6 }} />
+              <Text style={styles.cooldownText}>{cooldownMessage}</Text>
+            </View>
+          )}
+
           {/* Network Error Notification Banner */}
           {hasError && (
-            <TouchableOpacity style={styles.errorBanner} onPress={onRefresh} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.errorBanner} onPress={() => loadData(true)} activeOpacity={0.8}>
               <Ionicons name="wifi-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.errorBannerTitle}>Network Connection Notice</Text>
@@ -225,19 +268,19 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
 
-          {/* 2. Featured Event Carousel (Max 4 Items Infinite) */}
+          {/* 2. Featured Event Carousel */}
           <EventCarousel
             events={featuredEvents}
             onRegisterPress={handleRegisterPress}
           />
 
-          {/* 3. Quick Access Grid (Exactly 4 Items) */}
+          {/* 3. Quick Access Grid */}
           <QuickAccessCard
             items={quickAccessItems}
             onItemPress={handleQuickAccessPress}
           />
 
-          {/* 4. Upcoming Events (Max 4 Items) */}
+          {/* 4. Upcoming Events */}
           <UpcomingEventCard
             events={upcomingEvents}
             onEventPress={handleUpcomingEventPress}
@@ -270,6 +313,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
+  },
+  cooldownBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF8FF',
+    borderWidth: 1,
+    borderColor: '#BEE3F8',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: -40,
+    marginBottom: 16,
+    zIndex: 10,
+  },
+  cooldownText: {
+    fontSize: 12.5,
+    color: '#2B6CB0',
+    fontWeight: '600',
+    flex: 1,
   },
   errorBanner: {
     flexDirection: 'row',
