@@ -1,0 +1,16 @@
+import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
+import { DashboardLayout } from '@/components/layout/DashboardLayout';
+
+export default async function DashboardGroupLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { userId } = await auth();
+  if (!userId) {
+    redirect('/sign-in');
+  }
+
+  return <DashboardLayout>{children}</DashboardLayout>;
+}

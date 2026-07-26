@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from './errorHandler';
 
-type Role = 'SUPER_ADMIN' | 'ADMIN' | 'MODERATOR' | 'MEMBER' | 'GUEST';
+type Role = 'SUPER_ADMIN' | 'ADMIN' | 'EXECUTIVE' | 'VOLUNTEER' | 'MEMBER' | 'GUEST';
 
 /**
  * Role-Based Access Control middleware.

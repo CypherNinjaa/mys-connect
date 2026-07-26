@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AdminService } from '../services/admin.service';
-import { UserStatus, UserRole } from '@prisma/client';
+import { UserStatus, UserRole, EventStatus, NoticeType } from '@prisma/client';
+import { uploadToCloudinary } from '../utils/cloudinary';
 
 export class AdminController {
   /**
@@ -74,6 +75,456 @@ export class AdminController {
         success: true,
         message: `User role updated to ${role} successfully.`,
         data: updatedUser,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/dashboard
+   * Get dashboard statistics
+   */
+  static async getDashboard(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await AdminService.getDashboardStats();
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/events
+   * List events with pagination and filters
+   */
+  static async listEvents(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { page, limit, status, search } = req.query;
+      const result = await AdminService.listEvents({
+        page: page ? parseInt(page as string, 10) : 1,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+        status: status as EventStatus | undefined,
+        search: search as string,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/events
+   * Create a new event
+   */
+  static async createEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.createEvent(req.body, adminUserId);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/events/:id
+   * Update an event
+   */
+  static async updateEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.updateEvent(id, req.body, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/events/:id/publish
+   * Publish an event
+   */
+  static async publishEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.publishEvent(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/events/:id/cancel
+   * Cancel an event
+   */
+  static async cancelEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.cancelEvent(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/v1/admin/events/:id
+   * Delete an event
+   */
+  static async deleteEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.deleteEvent(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/events/:id/registrations
+   * Get registrations for an event
+   */
+  static async getEventRegistrations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const result = await AdminService.getEventRegistrations(id);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/notices
+   * List notices with pagination and filters
+   */
+  static async listNotices(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { page, limit, type, search } = req.query;
+      const result = await AdminService.listNotices({
+        page: page ? parseInt(page as string, 10) : 1,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+        type: type as NoticeType | undefined,
+        search: search as string,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/notices
+   * Create a new notice
+   */
+  static async createNotice(req: Request, res: Response, next: NextFunction) {
+    try {
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.createNotice(req.body, adminUserId);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/notices/:id
+   * Update a notice
+   */
+  static async updateNotice(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.updateNotice(id, req.body, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/notices/:id/publish
+   * Publish a notice
+   */
+  static async publishNotice(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.publishNotice(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/v1/admin/notices/:id
+   * Delete a notice
+   */
+  static async deleteNotice(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.deleteNotice(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/albums
+   * List albums with pagination and filters
+   */
+  static async listAlbums(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { page, limit, search } = req.query;
+      const result = await AdminService.listAlbums({
+        page: page ? parseInt(page as string, 10) : 1,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+        search: search as string,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/albums
+   * Create a new album
+   */
+  static async createAlbum(req: Request, res: Response, next: NextFunction) {
+    try {
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.createAlbum(req.body, adminUserId);
+
+      res.status(201).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/albums/:id
+   * Update an album
+   */
+  static async updateAlbum(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.updateAlbum(id, req.body, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/v1/admin/albums/:id
+   * Delete an album
+   */
+  static async deleteAlbum(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.deleteAlbum(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/albums/:albumId/photos
+   * Upload photos to an album
+   */
+  static async uploadPhotos(req: Request, res: Response, next: NextFunction) {
+    try {
+      const albumId = String(req.params.albumId || req.params.id);
+      const files = req.files as Express.Multer.File[];
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+
+      const uploadedPhotos: { imageUrl: string; sortOrder: number }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const url = await uploadToCloudinary(files[i].buffer, 'mys-connect/gallery');
+        uploadedPhotos.push({ imageUrl: url, sortOrder: i });
+      }
+
+      const result = await AdminService.addPhotosToAlbum(albumId, uploadedPhotos, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * DELETE /api/v1/admin/photos/:id
+   * Delete a photo
+   */
+  static async deletePhoto(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.deletePhoto(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/audit-logs
+   * List audit logs with pagination and filters
+   */
+  static async listAuditLogs(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { page, limit, entity, userId, startDate, endDate } = req.query;
+      const result = await AdminService.listAuditLogs({
+        page: page ? parseInt(page as string, 10) : 1,
+        limit: limit ? parseInt(limit as string, 10) : 20,
+        entity: entity as string,
+        userId: userId as string,
+        startDate: startDate as string,
+        endDate: endDate as string,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/settings
+   * Get application settings
+   */
+  static async getSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await AdminService.getSettings();
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/settings
+   * Update application settings
+   */
+  static async updateSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { settings } = req.body;
+      // @ts-expect-error - Attached by userResolver
+      const adminUserId = req.user?.id;
+      const result = await AdminService.updateSettings(settings, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
       });
     } catch (error) {
       next(error);

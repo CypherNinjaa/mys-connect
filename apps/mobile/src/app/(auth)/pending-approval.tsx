@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
@@ -34,7 +35,7 @@ export default function PendingApprovalScreen() {
       } else if (user.status === 'DEACTIVATED' || user.status === 'REJECTED') {
         router.replace('/(auth)/deactivated');
       } else {
-        alert('Your profile registration is still under review by MYS Ranchi administrators.');
+        Alert.alert('Under Review', 'Your profile registration is still under review by MYS Ranchi administrators.');
       }
     } catch (err) {
       console.error('Check status error:', err);

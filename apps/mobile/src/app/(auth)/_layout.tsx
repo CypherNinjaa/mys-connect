@@ -34,6 +34,7 @@ export default function AuthLayout() {
       <Stack.Screen name="complete-profile" options={{ title: 'Complete Member Profile', headerBackVisible: false }} />
       <Stack.Screen name="pending-approval" options={{ headerShown: false }} />
       <Stack.Screen name="deactivated" options={{ headerShown: false }} />
+      <Stack.Screen name="forgot-password" options={{ title: 'Reset Password' }} />
     </Stack>
   );
 }

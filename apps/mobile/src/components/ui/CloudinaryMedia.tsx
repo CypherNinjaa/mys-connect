@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
+  Alert,
   ViewStyle,
   ImageStyle,
 } from 'react-native';
@@ -50,7 +51,7 @@ export function CloudinaryMedia({
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        alert('Permission to access media library is required.');
+        Alert.alert('Permission Required', 'Permission to access media library is required.');
         return;
       }
 
@@ -73,7 +74,7 @@ export function CloudinaryMedia({
       }
     } catch (err: any) {
       console.error('Cloudinary upload picker error:', err);
-      alert(err.message || 'Failed to select image');
+      Alert.alert('Error', err.message || 'Failed to select image');
     } finally {
       setIsUploading(false);
     }
