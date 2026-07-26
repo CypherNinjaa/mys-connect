@@ -123,59 +123,81 @@ export default function ProfileScreen() {
     }
   };
 
-  // Realtime GPS Location Fetch with safe dynamic require
+  // Realtime GPS Location Fetch with universal fallback & zero crash guarantee
   const handleFetchCurrentLocation = async () => {
     try {
       setIsLocating(true);
-      let Location: typeof import('expo-location') | null = null;
+
+      let coords: { latitude: number; longitude: number } | null = null;
+      let locAddress = '';
+      let locPinCode = '';
+      let locCity = '';
+
+      // 1. Try expo-location dynamically
       try {
-        Location = require('expo-location');
+        const Location = require('expo-location');
+        if (Location && typeof Location.requestForegroundPermissionsAsync === 'function') {
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            if (pos?.coords) {
+              coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+              const geocoded = await Location.reverseGeocodeAsync(coords);
+              if (geocoded && geocoded[0]) {
+                const loc = geocoded[0];
+                locAddress = [loc.name, loc.street, loc.subregion, loc.district].filter(Boolean).join(', ');
+                locPinCode = loc.postalCode || '';
+                locCity = loc.city || loc.subregion || loc.district || '';
+              }
+            }
+          }
+        }
       } catch {
-        Location = null;
+        // Safe catch for ExpoLocation native module missing
       }
 
-      if (!Location || typeof Location.requestForegroundPermissionsAsync !== 'function') {
-        Alert.alert(
-          'Location Module Required',
-          'GPS location permissions require native location support on this device environment.'
-        );
-        return;
-      }
-
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Permission to access GPS location was denied.');
-        return;
-      }
-
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const geocoded = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-
-      if (geocoded && geocoded.length > 0) {
-        const loc = geocoded[0];
-        const formattedAddress = [loc.name, loc.street, loc.subregion, loc.district]
-          .filter(Boolean)
-          .join(', ');
-
-        if (formattedAddress) setAddress(formattedAddress);
-        if (loc.postalCode) setPinCode(loc.postalCode);
-
-        // Auto-select city chip if matched
-        const cityName = loc.city || loc.subregion || loc.district;
-        if (cityName && cities.length > 0) {
-          const matched = cities.find((c) =>
-            c.name.toLowerCase().includes(cityName.toLowerCase())
+      // 2. Universal navigator.geolocation fallback
+      if (!coords && globalThis.navigator && globalThis.navigator.geolocation) {
+        coords = await new Promise((resolve) => {
+          globalThis.navigator.geolocation.getCurrentPosition(
+            (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 10000 }
           );
+        });
+      }
+
+      // 3. Reverse Geocode via OpenStreetMap if address not retrieved yet
+      if (coords && !locAddress) {
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.latitude}&lon=${coords.longitude}`,
+            { headers: { 'User-Agent': 'MYSConnectApp/1.0' } }
+          );
+          const data = await res.json();
+          if (data && data.address) {
+            const addr = data.address;
+            locAddress = [addr.road, addr.suburb, addr.neighbourhood, addr.county].filter(Boolean).join(', ');
+            locPinCode = addr.postcode || '';
+            locCity = addr.city || addr.town || addr.village || addr.state_district || '';
+          }
+        } catch {
+          // Ignore fetch error
+        }
+      }
+
+      if (locAddress) {
+        setAddress(locAddress);
+        if (locPinCode) setPinCode(locPinCode);
+
+        if (locCity && cities.length > 0) {
+          const matched = cities.find((c) => c.name.toLowerCase().includes(locCity.toLowerCase()));
           if (matched) setCityId(matched.id);
         }
 
-        Alert.alert('Location Updated 📍', `Detected: ${cityName || 'Current Address'}`);
+        Alert.alert('Location Updated 📍', `Detected: ${locCity || 'Current Location'}`);
+      } else {
+        Alert.alert('Location Required', 'Could not determine GPS coordinates. Please enter your address manually.');
       }
     } catch (err: any) {
       console.error('Fetch location error:', err);
