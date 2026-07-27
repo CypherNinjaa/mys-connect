@@ -11,6 +11,11 @@ export interface ListUsersQuery {
   role?: UserRole;
   search?: string;
   cityId?: string;
+  occupation?: string;
+  profileComplete?: boolean;
+  hasAvatar?: boolean;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface ListEventsQuery {
@@ -44,7 +49,33 @@ export interface ListAuditLogsQuery {
 
 export class AdminService {
   /**
-   * List users with pagination and search filters
+   * Get member statistics overview KPI cards
+   */
+  static async getMemberStatistics() {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [total, active, pending, suspended, guests, recentlyJoined] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { status: UserStatus.ACTIVE } }),
+      prisma.user.count({ where: { status: UserStatus.PENDING } }),
+      prisma.user.count({ where: { status: UserStatus.DEACTIVATED } }),
+      prisma.user.count({ where: { role: UserRole.GUEST } }),
+      prisma.user.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+    ]);
+
+    return {
+      totalMembers: total,
+      activeMembers: active,
+      pendingApprovals: pending,
+      suspendedMembers: suspended,
+      guestMembers: guests,
+      recentlyJoined,
+    };
+  }
+
+  /**
+   * List users with enterprise pagination, sorting, and search filters
    */
   static async listUsers(query: ListUsersQuery) {
     const page = Math.max(1, query.page || 1);
@@ -62,7 +93,24 @@ export class AdminService {
     }
 
     if (query.cityId) {
-      where.profile = { cityId: query.cityId };
+      where.profile = { ...(where.profile || {}), cityId: query.cityId };
+    }
+
+    if (query.occupation) {
+      where.profile = { ...(where.profile || {}), occupation: { contains: query.occupation, mode: 'insensitive' } };
+    }
+
+    if (typeof query.profileComplete === 'boolean') {
+      where.profileComplete = query.profileComplete;
+    }
+
+    if (typeof query.hasAvatar === 'boolean') {
+      if (query.hasAvatar) {
+        where.OR = [
+          { avatarUrl: { not: null } },
+          { profile: { avatarUrl: { not: null } } },
+        ];
+      }
     }
 
     if (query.search) {
@@ -70,10 +118,23 @@ export class AdminService {
       where.OR = [
         { email: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search, mode: 'insensitive' } },
+        { fullName: { contains: search, mode: 'insensitive' } },
+        { memberId: { contains: search, mode: 'insensitive' } },
         { profile: { firstName: { contains: search, mode: 'insensitive' } } },
         { profile: { lastName: { contains: search, mode: 'insensitive' } } },
         { profile: { occupation: { contains: search, mode: 'insensitive' } } },
+        { profile: { organization: { contains: search, mode: 'insensitive' } } },
       ];
+    }
+
+    const orderByField = query.sortBy || 'createdAt';
+    const orderByDirection = query.sortOrder || 'desc';
+
+    const orderBy: any = {};
+    if (['createdAt', 'updatedAt', 'email', 'role', 'status', 'lastLoginAt'].includes(orderByField)) {
+      orderBy[orderByField] = orderByDirection;
+    } else {
+      orderBy.createdAt = 'desc';
     }
 
     const [total, users] = await Promise.all([
@@ -82,10 +143,13 @@ export class AdminService {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
           profile: {
             include: { city: true },
+          },
+          _count: {
+            select: { eventRSVPs: true },
           },
         },
       }),
@@ -250,6 +314,139 @@ export class AdminService {
     });
 
     return user;
+  }
+
+  /**
+   * Get detailed member profile by ID with audit log history and event RSVPs
+   */
+  static async getMemberById(id: string) {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        profile: {
+          include: { city: true },
+        },
+        eventRSVPs: {
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            event: {
+              select: { id: true, title: true, startDate: true, status: true, venue: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new AppError('Member not found', 404);
+    }
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { OR: [{ userId: id }, { entityId: id }] },
+      take: 10,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Compute profile completion percentage
+    let filledFields = 0;
+    const totalFields = 10;
+    if (user.email) filledFields++;
+    if (user.phone) filledFields++;
+    if (user.avatarUrl || user.profile?.avatarUrl) filledFields++;
+    if (user.profile?.firstName) filledFields++;
+    if (user.profile?.lastName) filledFields++;
+    if (user.profile?.dateOfBirth) filledFields++;
+    if (user.profile?.gender) filledFields++;
+    if (user.profile?.bloodGroup) filledFields++;
+    if (user.profile?.address) filledFields++;
+    if (user.profile?.occupation) filledFields++;
+
+    const completionScore = Math.round((filledFields / totalFields) * 100);
+
+    return {
+      ...user,
+      auditLogs,
+      completionScore,
+    };
+  }
+
+  /**
+   * Bulk update member status
+   */
+  static async bulkUpdateMemberStatus(
+    userIds: string[],
+    newStatus: UserStatus,
+    adminUserId: string,
+    reasonNote?: string,
+  ) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+    });
+
+    const updated = await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { status: newStatus },
+    });
+
+    // Process Clerk ban/unban in background for each user
+    Promise.allSettled(
+      users.map(async (u) => {
+        if (newStatus === UserStatus.DEACTIVATED || newStatus === UserStatus.REJECTED) {
+          await banClerkUser(u.clerkId).catch(() => {});
+          await updateClerkUserMetadata(u.clerkId, { status: newStatus, banned: true }).catch(() => {});
+        } else if (newStatus === UserStatus.ACTIVE) {
+          await unbanClerkUser(u.clerkId).catch(() => {});
+          await updateClerkUserMetadata(u.clerkId, { status: newStatus, banned: false, approved: true }).catch(() => {});
+        }
+      }),
+    );
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: `BULK_USER_STATUS_CHANGE_${newStatus}`,
+        entity: 'User',
+        metadata: { count: updated.count, userIds, reasonNote: reasonNote || null },
+      },
+    });
+
+    return { count: updated.count };
+  }
+
+  /**
+   * Bulk update member role
+   */
+  static async bulkUpdateMemberRole(
+    userIds: string[],
+    newRole: UserRole,
+    adminUserId: string,
+  ) {
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+    });
+
+    const updated = await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { role: newRole },
+    });
+
+    Promise.allSettled(
+      users.map(async (u) => {
+        await updateClerkUserMetadata(u.clerkId, { role: newRole }).catch(() => {});
+      }),
+    );
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: `BULK_USER_ROLE_CHANGE_${newRole}`,
+        entity: 'User',
+        metadata: { count: updated.count, userIds, newRole },
+      },
+    });
+
+    return { count: updated.count };
   }
 
   // ═══════════════════════════════════════════════════════════

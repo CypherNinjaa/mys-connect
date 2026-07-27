@@ -22,9 +22,13 @@ router.get('/dashboard', AdminController.getDashboard);
 
 // ─── Users/Members ───────────────────────
 router.get('/users', AdminController.listUsers);
+router.get('/members/statistics', AdminController.getMemberStatistics);
+router.get('/members/:id', AdminController.getMemberById);
 router.post('/users', AdminController.createUser);
 router.post('/users/:id/status', AdminController.updateUserStatus);
 router.post('/users/:id/role', AdminController.updateUserRole);
+router.post('/members/bulk-status', AdminController.bulkUpdateMemberStatus);
+router.post('/members/bulk-role', AdminController.bulkUpdateMemberRole);
 
 // ─── Events ──────────────────────────────
 router.get('/events', AdminController.listEvents);

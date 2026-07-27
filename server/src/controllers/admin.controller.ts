@@ -98,6 +98,59 @@ export class AdminController {
   }
 
   /**
+   * GET /api/v1/admin/members/statistics
+   */
+  static async getMemberStatistics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const stats = await AdminService.getMemberStatistics();
+      res.json({ success: true, data: stats });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/members/:id
+   */
+  static async getMemberById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const result = await AdminService.getMemberById(id);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/members/bulk-status
+   */
+  static async bulkUpdateMemberStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userIds, status, reason } = req.body;
+      const adminUserId = req.user?.id || 'admin';
+      const result = await AdminService.bulkUpdateMemberStatus(userIds, status as UserStatus, adminUserId, reason);
+      res.json({ success: true, message: `Updated status for ${result.count} members`, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/members/bulk-role
+   */
+  static async bulkUpdateMemberRole(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userIds, role } = req.body;
+      const adminUserId = req.user?.id || 'admin';
+      const result = await AdminService.bulkUpdateMemberRole(userIds, role as UserRole, adminUserId);
+      res.json({ success: true, message: `Updated role for ${result.count} members`, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/v1/admin/dashboard
    * Get dashboard statistics
    */

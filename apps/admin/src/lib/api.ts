@@ -42,9 +42,15 @@ export interface PaginationMeta {
 export const getDashboard = (token: string) =>
   apiFetch<ApiResponse<DashboardData>>('/admin/dashboard', { token });
 
-// Users
+// Users / Members
 export const getUsers = (token: string, params?: URLSearchParams) =>
   apiFetch<ApiResponse<{ users: UserData[]; pagination: PaginationMeta }>>(`/admin/users${params ? `?${params}` : ''}`, { token });
+
+export const getMemberStats = (token: string) =>
+  apiFetch<ApiResponse<MemberStatsData>>('/admin/members/statistics', { token });
+
+export const getMemberDetails = (token: string, id: string) =>
+  apiFetch<ApiResponse<UserData>>(`/admin/members/${id}`, { token });
 
 export const createUser = (token: string, data: { email: string; firstName: string; lastName: string; role?: string; status?: string; phone?: string }) =>
   apiFetch<ApiResponse<UserData>>('/admin/users', {
@@ -65,6 +71,20 @@ export const updateUserRole = (token: string, id: string, role: string) =>
     token,
     method: 'POST',
     body: JSON.stringify({ role }),
+  });
+
+export const bulkUpdateStatus = (token: string, userIds: string[], status: string, reason?: string) =>
+  apiFetch<ApiResponse<{ count: number }>>('/admin/members/bulk-status', {
+    token,
+    method: 'POST',
+    body: JSON.stringify({ userIds, status, reason }),
+  });
+
+export const bulkUpdateRole = (token: string, userIds: string[], role: string) =>
+  apiFetch<ApiResponse<{ count: number }>>('/admin/members/bulk-role', {
+    token,
+    method: 'POST',
+    body: JSON.stringify({ userIds, role }),
   });
 
 // Events
@@ -215,28 +235,58 @@ export interface DashboardData {
   };
 }
 
+export interface MemberStatsData {
+  totalMembers: number;
+  activeMembers: number;
+  pendingApprovals: number;
+  suspendedMembers: number;
+  guestMembers: number;
+  recentlyJoined: number;
+}
+
 export interface UserData {
   id: string;
   clerkId: string;
   email: string;
+  phone?: string;
+  fullName?: string;
+  memberId?: string;
+  avatarUrl?: string;
   role: string;
   status: string;
+  profileComplete: boolean;
+  lastLoginAt?: string;
   createdAt: string;
   updatedAt: string;
   profile?: {
     id: string;
-    firstName: string;
-    lastName: string;
+    firstName?: string;
+    lastName?: string;
+    displayName?: string;
     phone?: string;
     dateOfBirth?: string;
     gender?: string;
+    bloodGroup?: string;
     avatarUrl?: string;
     address?: string;
-    city?: { id: string; name: string };
+    cityId?: string;
+    city?: { id: string; name: string; state?: string };
+    state?: string;
+    pinCode?: string;
     occupation?: string;
     organization?: string;
+    designation?: string;
     bio?: string;
   };
+  completionScore?: number;
+  auditLogs?: AuditLogData[];
+  eventRSVPs?: Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    event?: { id: string; title: string; startDate: string; status: string; venue?: string };
+  }>;
+  _count?: { eventRSVPs: number };
 }
 
 export interface EventData {
