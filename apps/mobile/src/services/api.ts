@@ -1,7 +1,7 @@
 import { API } from '../constants/theme';
 
-const DEFAULT_TIMEOUT = 25000; // 25 seconds
-const UPLOAD_TIMEOUT = 60000; // 60 seconds for uploads
+const DEFAULT_TIMEOUT = 45000; // 45 seconds
+const UPLOAD_TIMEOUT = 90000; // 90 seconds for uploads
 
 export interface RegisterProfileData {
   firstName: string;
@@ -26,6 +26,21 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = DEFA
 }
 
 export class ApiService {
+  /**
+   * Ping server health check endpoint
+   */
+  static async checkHealth(): Promise<boolean> {
+    try {
+      const healthUrl = API.baseUrl.endsWith('/api/v1')
+        ? API.baseUrl.replace('/api/v1', '/health')
+        : `${API.baseUrl}/health`;
+      const res = await fetchWithTimeout(healthUrl, { method: 'GET' }, 8000);
+      const data = await res.json();
+      return data.status === 'ok';
+    } catch {
+      return false;
+    }
+  }
   private static async getHeaders(token?: string | null): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',

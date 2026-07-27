@@ -48,18 +48,25 @@ export default function SplashScreen() {
         }
 
         let dbUser = null;
+        let isNetworkError = false;
         try {
           dbUser = await Promise.race([
             ApiService.getMe(token),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Network timeout')), 25000)
+              setTimeout(() => reject(new Error('Network timeout')), 30000)
             ),
           ]);
         } catch (netErr) {
-          console.warn('Backend connection warning during splash:', netErr);
+          console.warn('Backend connection error during splash:', netErr);
+          isNetworkError = true;
         }
 
         if (!isMounted) return;
+
+        if (isNetworkError && !dbUser) {
+          router.replace('/(auth)/network-error');
+          return;
+        }
 
         if (dbUser) {
           if (dbUser.status === 'DEACTIVATED' || dbUser.status === 'REJECTED') {

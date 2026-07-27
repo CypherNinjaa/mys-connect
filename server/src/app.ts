@@ -12,15 +12,18 @@ const app = express();
 type RequestWithRawBody = Request & { rawBody?: Buffer };
 
 // ─── Security ─────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like native mobile apps, curl, Postman)
+      // Mobile apps, Postman, curl send no origin or null origin
       if (!origin || config.nodeEnv === 'development') {
         return callback(null, true);
       }
-      return callback(null, true);
+      if (config.corsOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(null, true);
     },
     credentials: true,
   })
