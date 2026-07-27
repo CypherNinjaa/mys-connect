@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.mysranchi.connect"
     },
     "android": {
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#6B1D2A",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

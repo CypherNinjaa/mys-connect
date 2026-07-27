@@ -1,6 +1,6 @@
 import { API } from '../constants/theme';
 
-const DEFAULT_TIMEOUT = 15000; // 15 seconds
+const DEFAULT_TIMEOUT = 25000; // 25 seconds
 const UPLOAD_TIMEOUT = 60000; // 60 seconds for uploads
 
 export interface RegisterProfileData {
