@@ -203,9 +203,15 @@ export default function DashboardPage() {
         <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-10 bg-[radial-gradient(#D4A017_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold text-amber-300">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Enterprise Admin Workspace</span>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-white p-1 shadow-lg shrink-0 flex items-center justify-center border border-white/20">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/logo.jpg" alt="MYS Logo" className="w-full h-full object-contain rounded-xl" />
+              </div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold text-amber-300">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Enterprise Admin Workspace</span>
+              </div>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
               Welcome back, Administrator 👋

@@ -72,10 +72,9 @@ export function Sidebar({
         {/* Workspace Switcher & Brand Header */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-400 to-[#D4A017] p-0.5 shadow-lg shrink-0 flex items-center justify-center">
-              <div className="w-full h-full bg-[#7A0E16] rounded-[10px] flex items-center justify-center font-black text-amber-400 text-base tracking-tighter">
-                MYS
-              </div>
+            <div className="w-10 h-10 rounded-xl bg-white p-0.5 shadow-md shrink-0 flex items-center justify-center overflow-hidden border border-white/20">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.jpg" alt="MYS Logo" className="w-full h-full object-contain rounded-lg" />
             </div>
             {!collapsed && (
               <div className="min-w-0">
