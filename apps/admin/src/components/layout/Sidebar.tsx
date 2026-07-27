@@ -172,7 +172,7 @@ export function Sidebar({
               collapsed && 'lg:justify-center lg:p-1.5'
             )}
           >
-            <UserButton afterSignOutUrl="/" appearance={{ elements: { userButtonAvatarBox: 'w-8 h-8 rounded-lg' } }} />
+            <UserButton appearance={{ elements: { userButtonAvatarBox: 'w-8 h-8 rounded-lg' } }} />
             {!collapsed && (
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-white truncate">
