@@ -95,7 +95,10 @@ export function Header({ onMenuClick, onOpenSearch, pendingCount = 0 }: HeaderPr
         {/* Notification Bell */}
         <div className="relative">
           <button
-            onClick={() => setShowNotifications(!showNotifications)}
+            onClick={() => {
+              setShowNotifications(!showNotifications);
+              setShowCreateDropdown(false);
+            }}
             className="relative p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
           >
             <Bell className="w-5 h-5" />
@@ -104,9 +107,11 @@ export function Header({ onMenuClick, onOpenSearch, pendingCount = 0 }: HeaderPr
             )}
           </button>
 
-          {/* Notifications Dropdown */}
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+              {/* Notifications Dropdown */}
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-4 space-y-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <h4 className="font-bold text-xs text-slate-900 uppercase tracking-wider">Notifications</h4>
                 <span className="text-[10px] font-semibold text-[#7A0E16] bg-[#7A0E16]/10 px-2 py-0.5 rounded-full">
@@ -137,13 +142,17 @@ export function Header({ onMenuClick, onOpenSearch, pendingCount = 0 }: HeaderPr
                 )}
               </div>
             </div>
+            </>
           )}
         </div>
 
         {/* Quick Create Dropdown */}
         <div className="relative">
           <button
-            onClick={() => setShowCreateDropdown(!showCreateDropdown)}
+            onClick={() => {
+              setShowCreateDropdown(!showCreateDropdown);
+              setShowNotifications(false);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#7A0E16] text-white hover:bg-[#600018] rounded-xl text-xs font-bold shadow-sm transition-all active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
@@ -151,7 +160,9 @@ export function Header({ onMenuClick, onOpenSearch, pendingCount = 0 }: HeaderPr
           </button>
 
           {showCreateDropdown && (
-            <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-2 space-y-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowCreateDropdown(false)} />
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-200/80 p-2 space-y-1 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
               <button
                 onClick={() => {
                   setShowCreateDropdown(false);
@@ -183,6 +194,7 @@ export function Header({ onMenuClick, onOpenSearch, pendingCount = 0 }: HeaderPr
                 <span>Publish Notice</span>
               </button>
             </div>
+            </>
           )}
         </div>
       </div>

@@ -14,8 +14,9 @@ import {
   type MemberStatsData,
 } from '@/lib/api';
 import { formatDate, getStatusColor, getRoleColor, getInitials } from '@/lib/utils';
-import { MemberProfileDrawer } from '@/components/members/MemberProfileDrawer';
+import { MemberProfileModal } from '@/components/members/MemberProfileModal';
 import { CreateMemberModal } from '@/components/members/CreateMemberModal';
+import { ExportMembersModal } from '@/components/members/ExportMembersModal';
 import {
   Search,
   ChevronLeft,
@@ -61,6 +62,7 @@ export default function MembersPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [drawerMemberId, setDrawerMemberId] = useState<string | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [bulkActionType, setBulkActionType] = useState<string | null>(null);
   const [bulkRoleValue, setBulkRoleValue] = useState('MEMBER');
 
@@ -238,11 +240,11 @@ export default function MembersPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={handleExportCSV}
+            onClick={() => setExportModalOpen(true)}
             className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-xs transition-colors"
           >
             <Download className="w-4 h-4 text-slate-400" />
-            <span>Export CSV</span>
+            <span>Export Data</span>
           </button>
           <button
             onClick={() => setCreateModalOpen(true)}
@@ -567,10 +569,18 @@ export default function MembersPage() {
         )}
       </div>
 
-      {/* Profile Side Drawer */}
-      <MemberProfileDrawer
+      {/* Full-Screen Member Profile Modal */}
+      <MemberProfileModal
         memberId={drawerMemberId}
         onClose={() => setDrawerMemberId(null)}
+      />
+
+      {/* Export Members Modal */}
+      <ExportMembersModal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        filteredMembers={members}
+        selectedMembers={members.filter((m) => selectedIds.includes(m.id))}
       />
 
       {/* Create Member Modal */}

@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { UserStatus, UserRole, EventStatus, NoticeType, NoticePriority } from '@prisma/client';
-import { banClerkUser, unbanClerkUser, updateClerkUserMetadata } from '../utils/clerk';
+import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
@@ -283,7 +283,20 @@ export class AdminService {
       throw new AppError('User with this email or phone already exists', 400);
     }
 
-    const clerkId = `user_admin_created_${Date.now()}`;
+    let clerkId = `user_admin_${Date.now()}`;
+    try {
+      const clerkAccount = await createClerkUserWithoutPassword({
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: data.role || 'MEMBER',
+      });
+      if (clerkAccount?.id) {
+        clerkId = clerkAccount.id;
+      }
+    } catch (clerkErr) {
+      logger.error('Failed to create passwordless Clerk user, generating fallback clerkId:', clerkErr);
+    }
 
     const user = await prisma.user.create({
       data: {
