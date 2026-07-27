@@ -19,7 +19,12 @@ async function apiFetch<T = unknown>(path: string, opts: FetchOptions = {}): Pro
 
   if (!res.ok) {
     const resBody = await res.json().catch(() => ({}));
-    throw new Error(resBody.message || `API error: ${res.status}`);
+    const errorMessage =
+      resBody.error?.message ||
+      resBody.message ||
+      (typeof resBody.error === 'string' ? resBody.error : null) ||
+      `API error: ${res.status}`;
+    throw new Error(errorMessage);
   }
 
   return res.json();

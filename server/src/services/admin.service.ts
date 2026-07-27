@@ -270,17 +270,16 @@ export class AdminService {
     },
     adminUserId: string,
   ) {
-    const existing = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: data.email },
-          ...(data.phone ? [{ phone: data.phone }] : []),
-        ],
-      },
-    });
+    const existingByEmail = await prisma.user.findUnique({ where: { email: data.email } });
+    if (existingByEmail) {
+      throw new AppError(`A member with email address '${data.email}' already exists.`, 400);
+    }
 
-    if (existing) {
-      throw new AppError('User with this email or phone already exists', 400);
+    if (data.phone) {
+      const existingByPhone = await prisma.user.findUnique({ where: { phone: data.phone } });
+      if (existingByPhone) {
+        throw new AppError(`A member with phone number '${data.phone}' already exists.`, 400);
+      }
     }
 
     let clerkId = `user_admin_${Date.now()}`;

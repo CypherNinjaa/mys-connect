@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createUser } from '@/lib/api';
-import { X, Upload } from 'lucide-react';
+import { X, Upload, AlertCircle } from 'lucide-react';
 
 interface CreateMemberModalProps {
   isOpen: boolean;
@@ -168,9 +168,12 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
         </div>
 
         {mutation.isError && (
-          <p className="text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 p-2.5 rounded-xl">
-            {(mutation.error as Error).message}
-          </p>
+          <div className="flex items-start gap-2.5 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p>{(mutation.error as Error).message}</p>
+            </div>
+          </div>
         )}
 
         <div className="flex gap-3 justify-end pt-2">
