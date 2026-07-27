@@ -1,6 +1,7 @@
 import { createClerkClient } from '@clerk/express';
 import { config } from '../config';
 import { logger } from './logger';
+import { AppError } from '../middleware/errorHandler';
 
 // Initialize Clerk Backend SDK Client
 export const clerkClient = createClerkClient({
@@ -81,7 +82,7 @@ export async function createClerkUserWithoutPassword(params: {
   } catch (error: any) {
     logger.error(`Clerk createUser failed for ${params.email}:`, error);
 
-    // If user already exists in Clerk, retrieve existing account and sync metadata
+    // If user already exists in Clerk, check if existing account can be retrieved
     try {
       const existingClerkUsers = await clerkClient.users.getUserList({
         emailAddress: [params.email],
@@ -89,32 +90,14 @@ export async function createClerkUserWithoutPassword(params: {
 
       if (existingClerkUsers.data && existingClerkUsers.data.length > 0) {
         const existingClerkUser = existingClerkUsers.data[0];
-        logger.info(`Found existing Clerk account ${existingClerkUser.id} for ${params.email}, updating metadata.`);
-        await updateClerkUserMetadata(existingClerkUser.id, {
-          role: params.role || 'MEMBER',
-          status: 'ACTIVE',
-          approved: true,
-        });
+        logger.info(`Found existing Clerk account ${existingClerkUser.id} for ${params.email}`);
         return existingClerkUser;
       }
     } catch (lookupErr) {
       logger.error(`Failed to lookup existing Clerk user for ${params.email}:`, lookupErr);
     }
 
-    // Fallback: Send email invitation via Clerk
-    try {
-      logger.info(`Sending Clerk invitation for ${params.email}`);
-      const invitation = await clerkClient.invitations.createInvitation({
-        emailAddress: params.email,
-        publicMetadata: {
-          role: params.role || 'MEMBER',
-          status: 'ACTIVE',
-        },
-      });
-      return { id: `inv_${invitation.id}`, emailAddress: params.email };
-    } catch (invErr: any) {
-      logger.error(`Clerk invitation fallback failed for ${params.email}:`, invErr);
-      throw new Error(error.message || 'Failed to create user or invitation in Clerk');
-    }
+    const clerkErrMsg = error.errors?.[0]?.message || error.message || 'Failed to create user in Clerk';
+    throw new AppError(`Clerk Error: ${clerkErrMsg}`, 400);
   }
 }

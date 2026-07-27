@@ -272,36 +272,33 @@ export class AdminService {
   ) {
     const existingByEmail = await prisma.user.findUnique({ where: { email: data.email } });
     if (existingByEmail) {
-      throw new AppError(`A member with email address '${data.email}' already exists.`, 400);
+      throw new AppError(`A member with email address '${data.email}' already exists in the system.`, 400);
     }
 
     if (data.phone) {
       const existingByPhone = await prisma.user.findUnique({ where: { phone: data.phone } });
       if (existingByPhone) {
-        throw new AppError(`A member with phone number '${data.phone}' already exists.`, 400);
+        throw new AppError(`A member with phone number '${data.phone}' already exists in the system.`, 400);
       }
     }
 
-    let clerkId = `user_admin_${Date.now()}`;
-    try {
-      const clerkAccount = await createClerkUserWithoutPassword({
-        email: data.email,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        role: data.role || 'MEMBER',
-      });
-      if (clerkAccount?.id) {
-        const existingByClerkId = await prisma.user.findUnique({ where: { clerkId: clerkAccount.id } });
-        if (existingByClerkId) {
-          throw new AppError(
-            `The email '${data.email}' is linked to an existing Clerk account (${existingByClerkId.email}) already registered in the database.`,
-            400
-          );
-        }
-        clerkId = clerkAccount.id;
-      }
-    } catch (clerkErr) {
-      logger.error('Failed to create passwordless Clerk user, generating fallback clerkId:', clerkErr);
+    // Provision or resolve Clerk User Account
+    const clerkAccount = await createClerkUserWithoutPassword({
+      email: data.email,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      role: data.role || 'MEMBER',
+    });
+
+    const clerkId = clerkAccount.id;
+
+    // Verify clerkId is not already bound to another database user
+    const existingByClerkId = await prisma.user.findUnique({ where: { clerkId } });
+    if (existingByClerkId) {
+      throw new AppError(
+        `A member account with email address '${data.email}' already exists in the system.`,
+        400
+      );
     }
 
     const user = await prisma.user.create({
