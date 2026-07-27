@@ -52,7 +52,7 @@ export default function SplashScreen() {
           dbUser = await Promise.race([
             ApiService.getMe(token),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Network timeout')), 5000)
+              setTimeout(() => reject(new Error('Network timeout')), 15000)
             ),
           ]);
         } catch (netErr) {
