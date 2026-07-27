@@ -34,10 +34,11 @@ export const errorHandler = (
 
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2002') {
+      const targetFields = Array.isArray(err.meta?.target) ? (err.meta?.target as string[]).join(', ') : 'value';
       res.status(409).json({
         success: false,
         error: {
-          message: 'A record with this value already exists.',
+          message: `A record with this ${targetFields} already exists in the system.`,
           statusCode: 409,
         },
       });

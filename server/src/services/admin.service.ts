@@ -291,6 +291,13 @@ export class AdminService {
         role: data.role || 'MEMBER',
       });
       if (clerkAccount?.id) {
+        const existingByClerkId = await prisma.user.findUnique({ where: { clerkId: clerkAccount.id } });
+        if (existingByClerkId) {
+          throw new AppError(
+            `The email '${data.email}' is linked to an existing Clerk account (${existingByClerkId.email}) already registered in the database.`,
+            400
+          );
+        }
         clerkId = clerkAccount.id;
       }
     } catch (clerkErr) {
