@@ -187,9 +187,32 @@ export interface DashboardData {
   totalNotices: number;
   totalAlbums: number;
   totalPhotos: number;
+  totalRegistrations?: number;
   recentMembers: UserData[];
+  pendingUsersList?: UserData[];
+  upcomingEventsList?: EventData[];
   recentActivity: AuditLogData[];
   membersByRole: { role: string; _count: number }[];
+  monthlyGrowth?: { month: string; members: number; events: number }[];
+  eventParticipation?: { month: string; rsvps: number; events: number }[];
+  systemHealth?: {
+    api: string;
+    database: string;
+    storage: string;
+    socket: string;
+    jobs: string;
+    uptime: string;
+  };
+  trendMetrics?: {
+    membersChange: string;
+    activeChange: string;
+    pendingChange: string;
+    eventsChange: string;
+    noticesChange: string;
+    photosChange: string;
+    albumsChange: string;
+    registrationsChange: string;
+  };
 }
 
 export interface UserData {
