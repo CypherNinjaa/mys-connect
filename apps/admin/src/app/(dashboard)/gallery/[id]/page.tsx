@@ -25,7 +25,7 @@ export default function AlbumDetailPage() {
     },
   });
 
-  const album = albumsData?.data?.find((a: AlbumData) => a.id === albumId);
+  const album = albumsData?.data?.albums?.find((a: AlbumData) => a.id === albumId);
 
   const deletePhotoMutation = useMutation({
     mutationFn: async (photoId: string) => {

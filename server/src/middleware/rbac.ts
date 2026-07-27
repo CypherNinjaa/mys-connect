@@ -10,7 +10,6 @@ type Role = 'SUPER_ADMIN' | 'ADMIN' | 'EXECUTIVE' | 'VOLUNTEER' | 'MEMBER' | 'GU
  */
 export const requireRole = (...allowedRoles: Role[]) => {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    // @ts-expect-error - User role is attached by our user resolution middleware
     const userRole: Role | undefined = req.userRole;
 
     if (!userRole) {

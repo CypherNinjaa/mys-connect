@@ -192,6 +192,66 @@ export class AdminService {
     return user;
   }
 
+  /**
+   * Create a user directly from Admin panel
+   */
+  static async createUser(
+    data: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      role?: UserRole;
+      status?: UserStatus;
+      phone?: string;
+    },
+    adminUserId: string,
+  ) {
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: data.email },
+          ...(data.phone ? [{ phone: data.phone }] : []),
+        ],
+      },
+    });
+
+    if (existing) {
+      throw new AppError('User with this email or phone already exists', 400);
+    }
+
+    const clerkId = `user_admin_created_${Date.now()}`;
+
+    const user = await prisma.user.create({
+      data: {
+        clerkId,
+        email: data.email,
+        phone: data.phone,
+        role: data.role || UserRole.MEMBER,
+        status: data.status || UserStatus.ACTIVE,
+        profileComplete: true,
+        profile: {
+          create: {
+            firstName: data.firstName,
+            lastName: data.lastName,
+          },
+        },
+      },
+      include: { profile: true },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'USER_CREATED',
+        entity: 'User',
+        entityId: user.id,
+        metadata: { email: user.email, role: user.role },
+      },
+    });
+
+    return user;
+  }
+
   // ═══════════════════════════════════════════════════════════
   // DASHBOARD
   // ═══════════════════════════════════════════════════════════
@@ -201,71 +261,72 @@ export class AdminService {
    */
   static async getDashboardStats() {
     const now = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Parallel queries for all counts
     const [
       totalMembers,
+      activeMembers,
+      pendingApprovals,
+      totalEvents,
       upcomingEvents,
       totalNotices,
-      galleryImages,
-      newRegistrations,
+      totalAlbums,
+      totalPhotos,
+      recentMembers,
+      membersByRole,
     ] = await Promise.all([
+      prisma.user.count(),
       prisma.user.count({ where: { status: UserStatus.ACTIVE } }),
+      prisma.user.count({ where: { status: UserStatus.PENDING } }),
+      prisma.event.count(),
       prisma.event.count({
         where: { status: EventStatus.PUBLISHED, startDate: { gte: now } },
       }),
       prisma.notice.count({ where: { isPublished: true } }),
+      prisma.album.count(),
       prisma.albumPhoto.count(),
-      prisma.user.count({ where: { createdAt: { gte: thirtyDaysAgo } } }),
+      prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { profile: true },
+      }),
+      prisma.user.groupBy({
+        by: ['role'],
+        _count: { _all: true },
+        where: { status: UserStatus.ACTIVE },
+      }),
     ]);
 
-    // Member growth — last 12 months
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const memberGrowth: { month: string; count: number }[] = [];
-
-    for (let i = 11; i >= 0; i--) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-      const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-
-      const count = await prisma.user.count({
-        where: {
-          createdAt: { gte: startOfMonth, lte: endOfMonth },
-        },
-      });
-
-      memberGrowth.push({ month: monthNames[startOfMonth.getMonth()], count });
-    }
-
-    // Recent activities — last 10 audit log entries with user info
     const recentLogs = await prisma.auditLog.findMany({
       orderBy: { createdAt: 'desc' },
       take: 10,
     });
 
     const userIds = Array.from(new Set(recentLogs.map((log) => log.userId)));
-    const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, email: true, fullName: true, avatarUrl: true },
-    });
+    const users = userIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } },
+        })
+      : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
 
-    const recentActivities = recentLogs.map((log) => ({
+    const recentActivity = recentLogs.map((log) => ({
       ...log,
       user: userMap.get(log.userId) || null,
     }));
 
     return {
       totalMembers,
+      activeMembers,
+      pendingApprovals,
+      totalEvents,
       upcomingEvents,
       totalNotices,
-      galleryImages,
-      newRegistrations,
-      memberGrowth,
-      recentActivities,
+      totalAlbums,
+      totalPhotos,
+      recentMembers,
+      recentActivity,
+      membersByRole: membersByRole.map((r) => ({ role: r.role, _count: r._count._all })),
     };
   }
 
@@ -438,6 +499,29 @@ export class AdminService {
       data: {
         userId: adminUserId,
         action: 'EVENT_PUBLISHED',
+        entity: 'Event',
+        entityId: id,
+        metadata: { title: event.title },
+      },
+    });
+
+    return event;
+  }
+
+  /**
+   * Unpublish an event
+   */
+  static async unpublishEvent(id: string, adminUserId: string) {
+    const event = await prisma.event.update({
+      where: { id },
+      data: { status: EventStatus.DRAFT, isPublic: false },
+      include: { city: true, _count: { select: { rsvps: true } } },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'EVENT_UNPUBLISHED',
         entity: 'Event',
         entityId: id,
         metadata: { title: event.title },
@@ -674,6 +758,28 @@ export class AdminService {
       data: {
         userId: adminUserId,
         action: 'NOTICE_PUBLISHED',
+        entity: 'Notice',
+        entityId: id,
+        metadata: { title: notice.title },
+      },
+    });
+
+    return notice;
+  }
+
+  /**
+   * Unpublish a notice
+   */
+  static async unpublishNotice(id: string, adminUserId: string) {
+    const notice = await prisma.notice.update({
+      where: { id },
+      data: { isPublished: false },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'NOTICE_UNPUBLISHED',
         entity: 'Notice',
         entityId: id,
         metadata: { title: notice.title },

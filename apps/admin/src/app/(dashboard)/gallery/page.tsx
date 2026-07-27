@@ -49,7 +49,7 @@ export default function GalleryPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['albums'] }),
   });
 
-  const albums = data?.data || [];
+  const albums = data?.data?.albums || [];
 
   return (
     <div className="space-y-6">

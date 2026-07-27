@@ -10,7 +10,6 @@ export class EventController {
       const search = req.query.search as string;
       const page = req.query.page ? Number(req.query.page) : 1;
       const limit = req.query.limit ? Number(req.query.limit) : 10;
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
 
       const data = await EventService.getEvents({ status, search, page, limit, userId });
@@ -26,7 +25,6 @@ export class EventController {
   static async getEventById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       const data = await EventService.getEventById(id, userId);
 
@@ -42,7 +40,6 @@ export class EventController {
   static async register(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 
@@ -60,7 +57,6 @@ export class EventController {
   static async cancelRegistration(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 

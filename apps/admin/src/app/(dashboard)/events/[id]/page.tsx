@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getEvents, updateEvent, getEventRegistrations } from '@/lib/api';
-import { ArrowLeft, Download } from 'lucide-react';
+import { ArrowLeft, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 
 export default function EventDetailPage() {
@@ -15,6 +15,8 @@ export default function EventDetailPage() {
   const queryClient = useQueryClient();
   const eventId = params.id as string;
 
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -47,7 +49,7 @@ export default function EventDetailPage() {
 
   useEffect(() => {
     if (eventsData?.data) {
-      const event = eventsData.data.find((e: { id: string }) => e.id === eventId);
+      const event = eventsData.data.events?.find((e: { id: string }) => e.id === eventId);
       if (event) {
         setForm({
           title: event.title || '',
@@ -56,22 +58,56 @@ export default function EventDetailPage() {
           address: event.address || '',
           startDate: event.startDate ? new Date(event.startDate).toISOString().slice(0, 16) : '',
           endDate: event.endDate ? new Date(event.endDate).toISOString().slice(0, 16) : '',
-          maxCapacity: event.maxCapacity?.toString() || '',
+          maxCapacity: event.maxCapacity?.toString() || event.maxAttendees?.toString() || '',
           registrationDeadline: event.registrationDeadline ? new Date(event.registrationDeadline).toISOString().slice(0, 16) : '',
           coverImageUrl: event.coverImageUrl || '',
         });
+        if (event.coverImageUrl) {
+          setCoverPreview(event.coverImageUrl);
+        }
       }
     }
   }, [eventsData, eventId]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCoverFile(file);
+      setCoverPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const removeFile = () => {
+    setCoverFile(null);
+    setCoverPreview(null);
+    setForm((prev) => ({ ...prev, coverImageUrl: '' }));
+  };
 
   const mutation = useMutation({
     mutationFn: async () => {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
-      return updateEvent(token, eventId, {
-        ...form,
-        maxCapacity: form.maxCapacity ? parseInt(form.maxCapacity) : undefined,
-      });
+
+      if (coverFile) {
+        const formData = new FormData();
+        formData.append('title', form.title);
+        if (form.description) formData.append('description', form.description);
+        if (form.venue) formData.append('venue', form.venue);
+        if (form.address) formData.append('address', form.address);
+        if (form.startDate) formData.append('startDate', form.startDate);
+        if (form.endDate) formData.append('endDate', form.endDate);
+        if (form.maxCapacity) formData.append('maxAttendees', form.maxCapacity);
+        if (form.registrationDeadline) formData.append('registrationDeadline', form.registrationDeadline);
+        formData.append('coverImage', coverFile);
+
+        return updateEvent(token, eventId, formData);
+      } else {
+        return updateEvent(token, eventId, {
+          ...form,
+          maxCapacity: form.maxCapacity ? parseInt(form.maxCapacity) : undefined,
+          maxAttendees: form.maxCapacity ? parseInt(form.maxCapacity) : undefined,
+        });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
@@ -131,9 +167,30 @@ export default function EventDetailPage() {
             <input type="datetime-local" name="registrationDeadline" value={form.registrationDeadline} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20" />
           </div>
         </div>
+
+        {/* Cloudinary Cover Image Upload */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image URL</label>
-          <input name="coverImageUrl" value={form.coverImageUrl} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20" />
+          <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image Banner</label>
+          {coverPreview ? (
+            <div className="relative w-full h-48 rounded-lg overflow-hidden border border-gray-200 group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={coverPreview} alt="Cover Preview" className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={removeFile}
+                className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black text-white rounded-full transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-maroon hover:bg-maroon/5 transition-colors">
+              <Upload className="w-6 h-6 text-gray-400 mb-1" />
+              <span className="text-sm font-medium text-gray-600">Click to upload cover image</span>
+              <span className="text-xs text-gray-400">PNG, JPG or WEBP (Max 10MB)</span>
+              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+            </label>
+          )}
         </div>
 
         {mutation.isError && <p className="text-sm text-red-600">{(mutation.error as Error).message}</p>}
@@ -153,10 +210,11 @@ export default function EventDetailPage() {
       {regsData?.data && (regsData.data as unknown[]).length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h3 className="font-semibold text-gray-900 mb-3">Registrations ({(regsData.data as unknown[]).length})</h3>
-          <div className="text-sm text-gray-500">
-            {(regsData.data as Array<{ id: string; user?: { email: string; profile?: { firstName: string; lastName: string } } }>).slice(0, 10).map((reg) => (
-              <div key={reg.id} className="py-1 border-b border-gray-100 last:border-0">
-                {reg.user?.profile?.firstName} {reg.user?.profile?.lastName} — {reg.user?.email}
+          <div className="text-sm text-gray-500 space-y-1">
+            {(regsData.data as Array<{ id: string; user?: { email: string; profile?: { firstName: string; lastName: string } } }>).map((reg) => (
+              <div key={reg.id} className="py-1 border-b border-gray-100 last:border-0 flex justify-between">
+                <span>{reg.user?.profile?.firstName} {reg.user?.profile?.lastName}</span>
+                <span className="text-gray-400">{reg.user?.email}</span>
               </div>
             ))}
           </div>

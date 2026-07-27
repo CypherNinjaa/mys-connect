@@ -39,7 +39,6 @@ export class UserController {
     try {
       const auth = getAuth(req);
       const clerkId = auth?.userId;
-      // @ts-expect-error - Attached by userResolver
       const user = req.user;
 
       if (!user && clerkId) {
@@ -75,7 +74,6 @@ export class UserController {
         );
       }
 
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) {
         throw new AppError('User account not found.', 401);
@@ -98,8 +96,10 @@ export class UserController {
    */
   static async uploadAvatar(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
+      if (!userId) {
+        throw new AppError('User account not found.', 401);
+      }
       const base64Data = req.body?.base64 || req.body?.image;
 
       let avatarUrl: string;

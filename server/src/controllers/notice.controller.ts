@@ -6,7 +6,6 @@ import { AppError } from '../middleware/errorHandler';
 export class NoticeController {
   static async getNotices(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 
@@ -25,7 +24,6 @@ export class NoticeController {
   static async getNoticeById(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 
@@ -43,7 +41,6 @@ export class NoticeController {
   static async markAsRead(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 

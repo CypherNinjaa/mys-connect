@@ -5,7 +5,6 @@ import { AppError } from '../middleware/errorHandler';
 export class NotificationController {
   static async getNotifications(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 
@@ -22,7 +21,6 @@ export class NotificationController {
   static async markAsRead(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 
@@ -38,7 +36,6 @@ export class NotificationController {
 
   static async markAllAsRead(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 
@@ -54,7 +51,6 @@ export class NotificationController {
 
   static async getUnreadCount(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
       const userId = req.user?.id;
       if (!userId) throw new AppError('Unauthorized', 401);
 

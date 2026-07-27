@@ -22,8 +22,7 @@ export class AdminController {
 
       res.json({
         success: true,
-        data: result.users,
-        pagination: result.pagination,
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -38,7 +37,6 @@ export class AdminController {
     try {
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { status, reason } = req.body;
-      // @ts-expect-error - Attached by userResolver
       const adminUserId = req.user?.id || 'admin';
 
       const updatedUser = await AdminService.updateUserStatus(
@@ -66,7 +64,6 @@ export class AdminController {
     try {
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { role } = req.body;
-      // @ts-expect-error - Attached by userResolver
       const adminUserId = req.user?.id || 'admin';
 
       const updatedUser = await AdminService.updateUserRole(id, role as UserRole, adminUserId);
@@ -75,6 +72,25 @@ export class AdminController {
         success: true,
         message: `User role updated to ${role} successfully.`,
         data: updatedUser,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/users
+   * Create user directly from Admin
+   */
+  static async createUser(req: Request, res: Response, next: NextFunction) {
+    try {
+      const adminUserId = req.user?.id || 'admin';
+      const result = await AdminService.createUser(req.body, adminUserId);
+
+      res.status(201).json({
+        success: true,
+        message: 'User created successfully',
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -127,8 +143,20 @@ export class AdminController {
    */
   static async createEvent(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
+      if (req.file) {
+        const url = await uploadToCloudinary(req.file.buffer, 'mys-connect/events');
+        req.body.coverImageUrl = url;
+      }
+      if (req.body.startDate && typeof req.body.startDate === 'string') {
+        req.body.startDate = new Date(req.body.startDate);
+      }
+      if (req.body.endDate && typeof req.body.endDate === 'string') {
+        req.body.endDate = new Date(req.body.endDate);
+      }
+      if (req.body.maxAttendees) {
+        req.body.maxAttendees = parseInt(String(req.body.maxAttendees), 10);
+      }
       const result = await AdminService.createEvent(req.body, adminUserId);
 
       res.status(201).json({
@@ -147,8 +175,20 @@ export class AdminController {
   static async updateEvent(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
+      if (req.file) {
+        const url = await uploadToCloudinary(req.file.buffer, 'mys-connect/events');
+        req.body.coverImageUrl = url;
+      }
+      if (req.body.startDate && typeof req.body.startDate === 'string') {
+        req.body.startDate = new Date(req.body.startDate);
+      }
+      if (req.body.endDate && typeof req.body.endDate === 'string') {
+        req.body.endDate = new Date(req.body.endDate);
+      }
+      if (req.body.maxAttendees) {
+        req.body.maxAttendees = parseInt(String(req.body.maxAttendees), 10);
+      }
       const result = await AdminService.updateEvent(id, req.body, adminUserId);
 
       res.json({
@@ -167,9 +207,27 @@ export class AdminController {
   static async publishEvent(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.publishEvent(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/events/:id/unpublish
+   * Unpublish an event
+   */
+  static async unpublishEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user?.id || 'admin';
+      const result = await AdminService.unpublishEvent(id, adminUserId);
 
       res.json({
         success: true,
@@ -187,8 +245,7 @@ export class AdminController {
   static async cancelEvent(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.cancelEvent(id, adminUserId);
 
       res.json({
@@ -207,8 +264,7 @@ export class AdminController {
   static async deleteEvent(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.deleteEvent(id, adminUserId);
 
       res.json({
@@ -267,8 +323,7 @@ export class AdminController {
    */
   static async createNotice(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.createNotice(req.body, adminUserId);
 
       res.status(201).json({
@@ -287,8 +342,7 @@ export class AdminController {
   static async updateNotice(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.updateNotice(id, req.body, adminUserId);
 
       res.json({
@@ -307,9 +361,27 @@ export class AdminController {
   static async publishNotice(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.publishNotice(id, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/notices/:id/unpublish
+   * Unpublish a notice
+   */
+  static async unpublishNotice(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user?.id || 'admin';
+      const result = await AdminService.unpublishNotice(id, adminUserId);
 
       res.json({
         success: true,
@@ -327,8 +399,7 @@ export class AdminController {
   static async deleteNotice(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.deleteNotice(id, adminUserId);
 
       res.json({
@@ -368,8 +439,7 @@ export class AdminController {
    */
   static async createAlbum(req: Request, res: Response, next: NextFunction) {
     try {
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.createAlbum(req.body, adminUserId);
 
       res.status(201).json({
@@ -388,8 +458,7 @@ export class AdminController {
   static async updateAlbum(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.updateAlbum(id, req.body, adminUserId);
 
       res.json({
@@ -408,8 +477,7 @@ export class AdminController {
   static async deleteAlbum(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.deleteAlbum(id, adminUserId);
 
       res.json({
@@ -429,8 +497,7 @@ export class AdminController {
     try {
       const albumId = String(req.params.albumId || req.params.id);
       const files = req.files as Express.Multer.File[];
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
 
       const uploadedPhotos: { imageUrl: string; sortOrder: number }[] = [];
       for (let i = 0; i < files.length; i++) {
@@ -456,8 +523,7 @@ export class AdminController {
   static async deletePhoto(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.deletePhoto(id, adminUserId);
 
       res.json({
@@ -518,8 +584,7 @@ export class AdminController {
   static async updateSettings(req: Request, res: Response, next: NextFunction) {
     try {
       const { settings } = req.body;
-      // @ts-expect-error - Attached by userResolver
-      const adminUserId = req.user?.id;
+      const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.updateSettings(settings, adminUserId);
 
       res.json({

@@ -22,14 +22,16 @@ router.get('/dashboard', AdminController.getDashboard);
 
 // ─── Users/Members ───────────────────────
 router.get('/users', AdminController.listUsers);
+router.post('/users', AdminController.createUser);
 router.post('/users/:id/status', AdminController.updateUserStatus);
 router.post('/users/:id/role', AdminController.updateUserRole);
 
 // ─── Events ──────────────────────────────
 router.get('/events', AdminController.listEvents);
-router.post('/events', AdminController.createEvent);
-router.put('/events/:id', AdminController.updateEvent);
+router.post('/events', upload.single('coverImage'), AdminController.createEvent);
+router.put('/events/:id', upload.single('coverImage'), AdminController.updateEvent);
 router.post('/events/:id/publish', AdminController.publishEvent);
+router.post('/events/:id/unpublish', AdminController.unpublishEvent);
 router.post('/events/:id/cancel', AdminController.cancelEvent);
 router.delete('/events/:id', AdminController.deleteEvent);
 router.get('/events/:id/registrations', AdminController.getEventRegistrations);
@@ -39,6 +41,7 @@ router.get('/notices', AdminController.listNotices);
 router.post('/notices', AdminController.createNotice);
 router.put('/notices/:id', AdminController.updateNotice);
 router.post('/notices/:id/publish', AdminController.publishNotice);
+router.post('/notices/:id/unpublish', AdminController.unpublishNotice);
 router.delete('/notices/:id', AdminController.deleteNotice);
 
 // ─── Gallery ─────────────────────────────

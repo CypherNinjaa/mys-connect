@@ -5,20 +5,21 @@ interface FetchOptions extends RequestInit {
 }
 
 async function apiFetch<T = unknown>(path: string, opts: FetchOptions = {}): Promise<T> {
-  const { token, headers: customHeaders, ...rest } = opts;
+  const { token, headers: customHeaders, body, ...rest } = opts;
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...((customHeaders as Record<string, string>) || {}),
   };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, { headers, ...rest });
+  const res = await fetch(`${API_URL}${path}`, { headers, body, ...rest });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || `API error: ${res.status}`);
+    const resBody = await res.json().catch(() => ({}));
+    throw new Error(resBody.message || `API error: ${res.status}`);
   }
 
   return res.json();
@@ -28,12 +29,13 @@ export interface ApiResponse<T> {
   success: boolean;
   data: T;
   message?: string;
-  pagination?: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+}
+
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 // Dashboard
@@ -42,7 +44,14 @@ export const getDashboard = (token: string) =>
 
 // Users
 export const getUsers = (token: string, params?: URLSearchParams) =>
-  apiFetch<ApiResponse<UserData[]>>(`/admin/users${params ? `?${params}` : ''}`, { token });
+  apiFetch<ApiResponse<{ users: UserData[]; pagination: PaginationMeta }>>(`/admin/users${params ? `?${params}` : ''}`, { token });
+
+export const createUser = (token: string, data: { email: string; firstName: string; lastName: string; role?: string; status?: string; phone?: string }) =>
+  apiFetch<ApiResponse<UserData>>('/admin/users', {
+    token,
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 
 export const updateUserStatus = (token: string, id: string, status: string, reason?: string) =>
   apiFetch<ApiResponse<UserData>>(`/admin/users/${id}/status`, {
@@ -60,24 +69,27 @@ export const updateUserRole = (token: string, id: string, role: string) =>
 
 // Events
 export const getEvents = (token: string, params?: URLSearchParams) =>
-  apiFetch<ApiResponse<EventData[]>>(`/admin/events${params ? `?${params}` : ''}`, { token });
+  apiFetch<ApiResponse<{ events: EventData[]; pagination: PaginationMeta }>>(`/admin/events${params ? `?${params}` : ''}`, { token });
 
-export const createEvent = (token: string, data: Partial<EventData>) =>
+export const createEvent = (token: string, data: FormData | Partial<EventData>) =>
   apiFetch<ApiResponse<EventData>>('/admin/events', {
     token,
     method: 'POST',
-    body: JSON.stringify(data),
+    body: data instanceof FormData ? data : JSON.stringify(data),
   });
 
-export const updateEvent = (token: string, id: string, data: Partial<EventData>) =>
+export const updateEvent = (token: string, id: string, data: FormData | Partial<EventData>) =>
   apiFetch<ApiResponse<EventData>>(`/admin/events/${id}`, {
     token,
     method: 'PUT',
-    body: JSON.stringify(data),
+    body: data instanceof FormData ? data : JSON.stringify(data),
   });
 
 export const publishEvent = (token: string, id: string) =>
   apiFetch<ApiResponse<EventData>>(`/admin/events/${id}/publish`, { token, method: 'POST' });
+
+export const unpublishEvent = (token: string, id: string) =>
+  apiFetch<ApiResponse<EventData>>(`/admin/events/${id}/unpublish`, { token, method: 'POST' });
 
 export const cancelEvent = (token: string, id: string) =>
   apiFetch<ApiResponse<EventData>>(`/admin/events/${id}/cancel`, { token, method: 'POST' });
@@ -90,7 +102,7 @@ export const getEventRegistrations = (token: string, id: string) =>
 
 // Notices
 export const getNotices = (token: string, params?: URLSearchParams) =>
-  apiFetch<ApiResponse<NoticeData[]>>(`/admin/notices${params ? `?${params}` : ''}`, { token });
+  apiFetch<ApiResponse<{ notices: NoticeData[]; pagination: PaginationMeta }>>(`/admin/notices${params ? `?${params}` : ''}`, { token });
 
 export const createNotice = (token: string, data: Partial<NoticeData>) =>
   apiFetch<ApiResponse<NoticeData>>('/admin/notices', {
@@ -109,12 +121,15 @@ export const updateNotice = (token: string, id: string, data: Partial<NoticeData
 export const publishNotice = (token: string, id: string) =>
   apiFetch<ApiResponse<NoticeData>>(`/admin/notices/${id}/publish`, { token, method: 'POST' });
 
+export const unpublishNotice = (token: string, id: string) =>
+  apiFetch<ApiResponse<NoticeData>>(`/admin/notices/${id}/unpublish`, { token, method: 'POST' });
+
 export const deleteNotice = (token: string, id: string) =>
   apiFetch<ApiResponse<void>>(`/admin/notices/${id}`, { token, method: 'DELETE' });
 
 // Gallery
 export const getAlbums = (token: string, params?: URLSearchParams) =>
-  apiFetch<ApiResponse<AlbumData[]>>(`/admin/gallery/albums${params ? `?${params}` : ''}`, { token });
+  apiFetch<ApiResponse<{ albums: AlbumData[]; pagination: PaginationMeta }>>(`/admin/gallery/albums${params ? `?${params}` : ''}`, { token });
 
 export const createAlbum = (token: string, data: Partial<AlbumData>) =>
   apiFetch<ApiResponse<AlbumData>>('/admin/gallery/albums', {
@@ -137,30 +152,23 @@ export const uploadPhotos = async (token: string, albumId: string, files: File[]
   const formData = new FormData();
   files.forEach((file) => formData.append('photos', file));
 
-  const res = await fetch(`${API_URL}/admin/gallery/albums/${albumId}/photos`, {
+  return apiFetch<ApiResponse<{ count: number }>>(`/admin/gallery/albums/${albumId}/photos`, {
+    token,
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
     body: formData,
   });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || `Upload failed: ${res.status}`);
-  }
-
-  return res.json();
 };
 
-export const deletePhoto = (token: string, id: string) =>
-  apiFetch<ApiResponse<void>>(`/admin/gallery/photos/${id}`, { token, method: 'DELETE' });
+export const deletePhoto = (token: string, photoId: string) =>
+  apiFetch<ApiResponse<void>>(`/admin/gallery/photos/${photoId}`, { token, method: 'DELETE' });
 
 // Audit Logs
 export const getAuditLogs = (token: string, params?: URLSearchParams) =>
-  apiFetch<ApiResponse<AuditLogData[]>>(`/admin/audit-logs${params ? `?${params}` : ''}`, { token });
+  apiFetch<ApiResponse<{ logs: AuditLogData[]; pagination: PaginationMeta }>>(`/admin/audit-logs${params ? `?${params}` : ''}`, { token });
 
 // Settings
 export const getSettings = (token: string) =>
-  apiFetch<ApiResponse<SettingData[]>>('/admin/settings', { token });
+  apiFetch<ApiResponse<Record<string, SettingData[]>>>('/admin/settings', { token });
 
 export const updateSettings = (token: string, settings: Record<string, string>) =>
   apiFetch<ApiResponse<SettingData[]>>('/admin/settings', {
@@ -182,7 +190,6 @@ export interface DashboardData {
   recentMembers: UserData[];
   recentActivity: AuditLogData[];
   membersByRole: { role: string; _count: number }[];
-  membersByCity: { cityId: string; city: { name: string }; _count: number }[];
 }
 
 export interface UserData {
@@ -193,22 +200,20 @@ export interface UserData {
   status: string;
   createdAt: string;
   updatedAt: string;
-  profile?: ProfileData;
-}
-
-export interface ProfileData {
-  id: string;
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  dateOfBirth?: string;
-  gender?: string;
-  avatarUrl?: string;
-  address?: string;
-  city?: { id: string; name: string };
-  occupation?: string;
-  organization?: string;
-  bio?: string;
+  profile?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    dateOfBirth?: string;
+    gender?: string;
+    avatarUrl?: string;
+    address?: string;
+    city?: { id: string; name: string };
+    occupation?: string;
+    organization?: string;
+    bio?: string;
+  };
 }
 
 export interface EventData {
@@ -222,6 +227,7 @@ export interface EventData {
   status: string;
   coverImageUrl?: string;
   maxCapacity?: number;
+  maxAttendees?: number;
   registrationDeadline?: string;
   isPublished: boolean;
   createdAt: string;

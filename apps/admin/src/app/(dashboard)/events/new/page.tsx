@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { useMutation } from '@tanstack/react-query';
 import { createEvent } from '@/lib/api';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Upload, X } from 'lucide-react';
 import Link from 'next/link';
 
 export default function NewEventPage() {
   const { getToken } = useAuth();
   const router = useRouter();
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -20,17 +22,38 @@ export default function NewEventPage() {
     endDate: '',
     maxCapacity: '',
     registrationDeadline: '',
-    coverImageUrl: '',
   });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCoverFile(file);
+      setCoverPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const removeFile = () => {
+    setCoverFile(null);
+    setCoverPreview(null);
+  };
 
   const mutation = useMutation({
     mutationFn: async () => {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
-      return createEvent(token, {
-        ...form,
-        maxCapacity: form.maxCapacity ? parseInt(form.maxCapacity) : undefined,
-      });
+
+      const formData = new FormData();
+      formData.append('title', form.title);
+      if (form.description) formData.append('description', form.description);
+      if (form.venue) formData.append('venue', form.venue);
+      if (form.address) formData.append('address', form.address);
+      if (form.startDate) formData.append('startDate', form.startDate);
+      if (form.endDate) formData.append('endDate', form.endDate);
+      if (form.maxCapacity) formData.append('maxAttendees', form.maxCapacity);
+      if (form.registrationDeadline) formData.append('registrationDeadline', form.registrationDeadline);
+      if (coverFile) formData.append('coverImage', coverFile);
+
+      return createEvent(token, formData);
     },
     onSuccess: () => router.push('/events'),
   });
@@ -87,9 +110,30 @@ export default function NewEventPage() {
             <input type="datetime-local" name="registrationDeadline" value={form.registrationDeadline} onChange={handleChange} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20" />
           </div>
         </div>
+
+        {/* Cloudinary Cover Image File Upload */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image URL</label>
-          <input name="coverImageUrl" value={form.coverImageUrl} onChange={handleChange} placeholder="https://..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20" />
+          <label className="block text-sm font-medium text-gray-700 mb-1">Cover Image Banner</label>
+          {coverPreview ? (
+            <div className="relative w-full h-48 rounded-lg overflow-hidden border border-gray-200 group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={coverPreview} alt="Cover Preview" className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={removeFile}
+                className="absolute top-2 right-2 p-1.5 bg-black/60 hover:bg-black text-white rounded-full transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-maroon hover:bg-maroon/5 transition-colors">
+              <Upload className="w-6 h-6 text-gray-400 mb-1" />
+              <span className="text-sm font-medium text-gray-600">Click to upload cover image</span>
+              <span className="text-xs text-gray-400">PNG, JPG or WEBP (Max 10MB)</span>
+              <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+            </label>
+          )}
         </div>
 
         {mutation.isError && (

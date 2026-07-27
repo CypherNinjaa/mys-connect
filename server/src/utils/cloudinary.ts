@@ -11,17 +11,33 @@ export { cloudinary };
 
 export const uploadToCloudinary = async (
   fileData: Buffer | string,
-  folder: string = 'mys-connect/avatars'
+  folder: string = 'mys-connect/avatars',
+  customTransformations?: Record<string, any>[]
 ): Promise<string> => {
+  let defaultTransformations: Record<string, any>[] = [
+    { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+    { quality: 'auto', fetch_format: 'auto' },
+  ];
+
+  if (folder.includes('events')) {
+    defaultTransformations = [
+      { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
+      { quality: 'auto', fetch_format: 'auto' },
+    ];
+  } else if (folder.includes('gallery') || folder.includes('albums')) {
+    defaultTransformations = [
+      { quality: 'auto', fetch_format: 'auto' },
+    ];
+  }
+
+  const transformation = customTransformations || defaultTransformations;
+
   if (typeof fileData === 'string') {
     const formattedData = fileData.startsWith('data:') ? fileData : `data:image/jpeg;base64,${fileData}`;
     const result = await cloudinary.uploader.upload(formattedData, {
       folder,
       resource_type: 'image',
-      transformation: [
-        { width: 400, height: 400, crop: 'fill', gravity: 'face' },
-        { quality: 'auto', fetch_format: 'auto' },
-      ],
+      transformation,
     });
     return result.secure_url;
   }
@@ -31,10 +47,7 @@ export const uploadToCloudinary = async (
       {
         folder,
         resource_type: 'image',
-        transformation: [
-          { width: 400, height: 400, crop: 'fill', gravity: 'face' },
-          { quality: 'auto', fetch_format: 'auto' },
-        ],
+        transformation,
       },
       (error, result) => {
         if (error) return reject(error);

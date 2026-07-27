@@ -20,10 +20,14 @@ export default function SettingsPage() {
     },
   });
 
+  const settingsList: SettingData[] = data?.data
+    ? Object.values(data.data as unknown as Record<string, SettingData[]>).flat()
+    : [];
+
   useEffect(() => {
-    if (data?.data) {
+    if (settingsList.length > 0) {
       const values: Record<string, string> = {};
-      (data.data as SettingData[]).forEach((s) => {
+      settingsList.forEach((s) => {
         values[s.key] = s.value;
       });
       setFormValues(values);
@@ -38,8 +42,6 @@ export default function SettingsPage() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
   });
-
-  const settings = (data?.data as SettingData[] | undefined) || [];
 
   return (
     <div className="space-y-6">
@@ -70,7 +72,7 @@ export default function SettingsPage() {
       )}
 
       <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-        {settings.map((setting) => (
+        {settingsList.map((setting) => (
           <div key={setting.id} className="p-5 flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900">{setting.key.replace(/_/g, ' ')}</p>
@@ -84,7 +86,7 @@ export default function SettingsPage() {
           </div>
         ))}
 
-        {!isLoading && settings.length === 0 && (
+        {!isLoading && settingsList.length === 0 && (
           <div className="p-8 text-center text-sm text-gray-400">
             No settings configured yet.
           </div>

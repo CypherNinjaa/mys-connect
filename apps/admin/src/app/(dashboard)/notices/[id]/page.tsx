@@ -35,7 +35,7 @@ export default function NoticeDetailPage() {
 
   useEffect(() => {
     if (noticesData?.data) {
-      const notice = noticesData.data.find((n: { id: string }) => n.id === noticeId);
+      const notice = noticesData.data.notices?.find((n: { id: string }) => n.id === noticeId);
       if (notice) {
         setForm({
           title: notice.title || '',

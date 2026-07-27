@@ -26,8 +26,8 @@ export default function AuditLogsPage() {
     },
   });
 
-  const logs = data?.data || [];
-  const pagination = data?.pagination;
+  const logs = data?.data?.logs || [];
+  const pagination = data?.data?.pagination;
 
   return (
     <div className="space-y-6">
