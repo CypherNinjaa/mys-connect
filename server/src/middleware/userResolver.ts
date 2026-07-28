@@ -37,7 +37,7 @@ export const userResolver = async (
       }
     }
 
-    // 1. First, search by clerkId
+    // 1. Search DB by clerkId
     let user = await prisma.user.findUnique({
       where: { clerkId },
       include: {
@@ -49,7 +49,7 @@ export const userResolver = async (
 
     // 2. If not found by clerkId, search by email to re-link seeded or legacy accounts
     if (!user && clerkEmail) {
-      const userByEmail = await prisma.user.findUnique({
+      const userByEmail = await prisma.user.findFirst({
         where: { email: clerkEmail },
         include: {
           profile: {
@@ -97,15 +97,27 @@ export const userResolver = async (
       });
     }
 
-    // 4. Role & Status Sync:
-    // If Clerk publicMetadata defines a role (e.g. SUPER_ADMIN) that differs from DB, sync DB to match Clerk!
+    // 4. Check if any matching record by email is DEACTIVATED or REJECTED
+    if (clerkEmail) {
+      const deactivatedCheck = await prisma.user.findFirst({
+        where: {
+          OR: [{ clerkId }, { email: clerkEmail }],
+          status: { in: [UserStatus.DEACTIVATED, UserStatus.REJECTED] },
+        },
+      });
+
+      if (deactivatedCheck) {
+        throw new AppError('Your account has been deactivated or rejected by administration.', 403);
+      }
+    }
+
+    // 5. Role Sync (Only sync role if not deactivated)
     if (clerkRole && Object.values(UserRole).includes(clerkRole as UserRole) && user.role !== clerkRole) {
       logger.info(`Syncing user role for ${user.email} from DB (${user.role}) to Clerk (${clerkRole})`);
       user = await prisma.user.update({
         where: { id: user.id },
         data: {
           role: clerkRole as UserRole,
-          status: clerkStatus === 'ACTIVE' ? UserStatus.ACTIVE : user.status,
         },
         include: {
           profile: {
@@ -120,7 +132,7 @@ export const userResolver = async (
       throw new AppError('Your account has been deactivated or rejected by administration.', 403);
     }
 
-    // Attach to Request (typed via src/types/express.d.ts)
+    // Attach to Request
     req.user = user;
     req.userRole = user.role;
     req.userStatus = user.status;

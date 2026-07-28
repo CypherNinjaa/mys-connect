@@ -188,29 +188,55 @@ export class AdminService {
     const previousStatus = user.status;
     logger.info(`Admin ${adminUserId} changing user ${targetUserId} status from ${previousStatus} -> ${newStatus}`);
 
-    // Update in Prisma Database
-    const updatedUser = await prisma.user.update({
-      where: { id: targetUserId },
+    // Resolve real Clerk User ID by email if current clerkId is synthetic
+    let realClerkId = user.clerkId;
+    if (user.email) {
+      try {
+        const clerkUsers = await clerkClient.users.getUserList({ emailAddress: [user.email] });
+        if (clerkUsers.data && clerkUsers.data.length > 0) {
+          realClerkId = clerkUsers.data[0].id;
+          logger.info(`Resolved real Clerk User ID ${realClerkId} for member ${user.email}`);
+        }
+      } catch (clerkErr) {
+        logger.warn(`Could not resolve real Clerk User ID for ${user.email}:`, clerkErr);
+      }
+    }
+
+    // Update status in ALL matching records in Prisma Database (by ID, email, or clerkId)
+    const matchingOrs: any[] = [{ id: targetUserId }];
+    if (user.email) matchingOrs.push({ email: user.email });
+    if (realClerkId) matchingOrs.push({ clerkId: realClerkId });
+
+    await prisma.user.updateMany({
+      where: { OR: matchingOrs },
       data: { status: newStatus },
+    });
+
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
       include: { profile: { include: { city: true } } },
     });
 
     // Sync with Clerk ban/unban feature
-    if (newStatus === UserStatus.DEACTIVATED || newStatus === UserStatus.REJECTED) {
-      // Ban user in Clerk
-      try {
-        await banClerkUser(user.clerkId);
-        await updateClerkUserMetadata(user.clerkId, { status: newStatus, banned: true });
-      } catch (err) {
-        logger.error(`Error syncing ban status to Clerk for ${user.clerkId}:`, err);
-      }
-    } else if (newStatus === UserStatus.ACTIVE) {
-      // Unban user in Clerk
-      try {
-        await unbanClerkUser(user.clerkId);
-        await updateClerkUserMetadata(user.clerkId, { status: newStatus, banned: false, approved: true });
-      } catch (err) {
-        logger.error(`Error syncing unban status to Clerk for ${user.clerkId}:`, err);
+    if (realClerkId) {
+      if (newStatus === UserStatus.DEACTIVATED || newStatus === UserStatus.REJECTED) {
+        // Ban user in Clerk
+        try {
+          await banClerkUser(realClerkId);
+          await updateClerkUserMetadata(realClerkId, { status: newStatus, banned: true, approved: false });
+          logger.info(`Banned Clerk user account ${realClerkId} (${user.email})`);
+        } catch (err) {
+          logger.error(`Error syncing ban status to Clerk for ${realClerkId}:`, err);
+        }
+      } else if (newStatus === UserStatus.ACTIVE) {
+        // Unban user in Clerk
+        try {
+          await unbanClerkUser(realClerkId);
+          await updateClerkUserMetadata(realClerkId, { status: newStatus, banned: false, approved: true });
+          logger.info(`Unbanned Clerk user account ${realClerkId} (${user.email})`);
+        } catch (err) {
+          logger.error(`Error syncing unban status to Clerk for ${realClerkId}:`, err);
+        }
       }
     }
 
