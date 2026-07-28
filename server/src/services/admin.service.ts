@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { UserStatus, UserRole, EventStatus, NoticeType, NoticePriority } from '@prisma/client';
-import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation } from '../utils/clerk';
+import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation, clerkClient } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
@@ -282,28 +282,33 @@ export class AdminService {
       }
     }
 
-    // Provision or resolve Clerk User Account
-    const clerkAccount = await createClerkUserWithoutPassword({
-      email: data.email,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      role: data.role || 'MEMBER',
-    });
-
-    // Also dispatch official Clerk Email Invitation so the member can set their password / activate
+    // Provision Clerk Account via Official Email Invitation
+    let clerkId: string;
     try {
-      await createClerkInvitation({
+      const invitation = await createClerkInvitation({
         email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
         role: data.role || 'MEMBER',
       });
-      logger.info(`Successfully dispatched Clerk invitation email to ${data.email}`);
-    } catch (invErr) {
-      logger.warn(`Could not dispatch Clerk invitation email to ${data.email} (user created):`, invErr);
+      clerkId = invitation.id;
+      logger.info(`Successfully dispatched Clerk invitation email (${clerkId}) to ${data.email}`);
+    } catch (invErr: any) {
+      // If email is already registered in Clerk, lookup existing Clerk user ID
+      try {
+        const existingClerkUsers = await clerkClient.users.getUserList({
+          emailAddress: [data.email],
+        });
+        if (existingClerkUsers.data && existingClerkUsers.data.length > 0) {
+          clerkId = existingClerkUsers.data[0].id;
+          logger.info(`Email ${data.email} exists in Clerk under user ID ${clerkId}`);
+        } else {
+          throw invErr;
+        }
+      } catch (lookupErr) {
+        throw invErr;
+      }
     }
-
-    const clerkId = clerkAccount.id;
 
     // Verify clerkId is not already bound to another database user
     const existingByClerkId = await prisma.user.findUnique({ where: { clerkId } });
