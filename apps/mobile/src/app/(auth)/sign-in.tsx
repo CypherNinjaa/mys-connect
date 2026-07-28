@@ -19,8 +19,6 @@ import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export default function SignInScreen() {
   const { isLoaded } = useAuth();
   const { signIn, fetchStatus } = useSignIn();
@@ -705,7 +703,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mahalImage: {
-    width: SCREEN_WIDTH * 0.9,
+    width: Dimensions.get('window').width * 0.9,
     height: 120,
   },
   bottomWaveContainer: {
