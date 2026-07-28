@@ -75,7 +75,7 @@ export default function EventsPage() {
   }, [searchInput]);
 
   // KPI Query
-  const { data: kpiData, isLoading: kpiLoading } = useQuery({
+  const { data: kpiData, isLoading: kpiLoading, refetch: refetchKPIs } = useQuery({
     queryKey: ['events-kpis'],
     queryFn: async () => {
       const token = await getToken();
@@ -93,7 +93,7 @@ export default function EventsPage() {
   if (chapterFilter && chapterFilter !== 'ALL') params.set('chapter', chapterFilter);
   if (categoryFilter && categoryFilter !== 'ALL') params.set('category', categoryFilter);
 
-  const { data, isLoading, refetch, isFetching } = useQuery({
+  const { data, isLoading, refetch: refetchEvents, isFetching: eventsFetching } = useQuery({
     queryKey: ['events', page, debouncedSearch, statusFilter, chapterFilter, categoryFilter],
     queryFn: async () => {
       const token = await getToken();
@@ -103,7 +103,12 @@ export default function EventsPage() {
   });
 
   // Registered Users Query for Modal
-  const { data: registrationsData, isLoading: regLoading } = useQuery({
+  const {
+    data: registrationsData,
+    isLoading: regLoading,
+    refetch: refetchRegistrations,
+    isFetching: regFetching,
+  } = useQuery({
     queryKey: ['event-registrations', viewingEvent?.id],
     enabled: Boolean(viewingEvent?.id),
     queryFn: async () => {
@@ -112,6 +117,14 @@ export default function EventsPage() {
       return getEventRegistrations(token, viewingEvent.id);
     },
   });
+
+  const handleGlobalRefresh = () => {
+    refetchEvents();
+    refetchKPIs();
+    if (viewingEvent?.id) {
+      refetchRegistrations();
+    }
+  };
 
   // Mutations
   const publishMutation = useMutation({
@@ -123,6 +136,7 @@ export default function EventsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['events-kpis'] });
+      queryClient.invalidateQueries({ queryKey: ['event-registrations'] });
     },
   });
 
@@ -135,6 +149,7 @@ export default function EventsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       queryClient.invalidateQueries({ queryKey: ['events-kpis'] });
+      queryClient.invalidateQueries({ queryKey: ['event-registrations'] });
     },
   });
 
@@ -321,12 +336,12 @@ export default function EventsPage() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => refetch()}
-            disabled={isFetching}
+            onClick={handleGlobalRefresh}
+            disabled={eventsFetching || regFetching}
             className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
-            title="Refresh Data"
+            title="Refresh All Event Data & Registrations"
           >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin text-maroon' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${eventsFetching || regFetching ? 'animate-spin text-maroon' : ''}`} />
             <span className="hidden sm:inline">Refresh</span>
           </button>
           <Link
@@ -794,10 +809,19 @@ export default function EventsPage() {
                   Registered Members
                 </h2>
                 <p className="text-xs text-amber-200 mt-0.5">
-                  {viewingEvent.title} ({filteredRegList.length} members)
+                  {viewingEvent.title} ({rawRegList.length} member{rawRegList.length !== 1 ? 's' : ''})
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => refetchRegistrations()}
+                  disabled={regFetching}
+                  className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-white/20"
+                  title="Refresh Member List"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-blue-200 ${regFetching ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
                 <button
                   onClick={() => handleExportCSV(viewingEvent, rawRegList)}
                   className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-white/20"
