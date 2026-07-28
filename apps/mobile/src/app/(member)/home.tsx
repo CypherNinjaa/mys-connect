@@ -69,12 +69,9 @@ export default function HomeScreen() {
       setCooldownMessage(null);
 
       try {
-        const mockFeatured = await HomeService.getFeaturedEvents();
-        const mockUpcoming = await HomeService.getUpcomingEvents();
-
         let fetchedUser: any = user;
-        let finalFeatured: FeaturedEvent[] = mockFeatured.slice(0, 4);
-        let finalUpcoming: UpcomingEvent[] = mockUpcoming.slice(0, 4);
+        let finalFeatured: FeaturedEvent[] = [];
+        let finalUpcoming: UpcomingEvent[] = [];
 
         if (isSignedIn) {
           const token = await getToken();

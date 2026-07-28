@@ -135,11 +135,10 @@ export class HomeService {
   }
 
   static async getFeaturedEvents(): Promise<FeaturedEvent[]> {
-    // Return mock featured events
-    return MOCK_FEATURED_EVENTS;
+    return [];
   }
 
   static async getUpcomingEvents(): Promise<UpcomingEvent[]> {
-    return MOCK_UPCOMING_EVENTS;
+    return [];
   }
 }
