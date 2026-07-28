@@ -465,11 +465,11 @@ export class AdminService {
     Promise.allSettled(
       users.map(async (u) => {
         if (newStatus === UserStatus.DEACTIVATED || newStatus === UserStatus.REJECTED) {
-          await banClerkUser(u.clerkId).catch(() => {});
-          await updateClerkUserMetadata(u.clerkId, { status: newStatus, banned: true }).catch(() => {});
+          await banClerkUser(u.clerkId).catch(() => { });
+          await updateClerkUserMetadata(u.clerkId, { status: newStatus, banned: true }).catch(() => { });
         } else if (newStatus === UserStatus.ACTIVE) {
-          await unbanClerkUser(u.clerkId).catch(() => {});
-          await updateClerkUserMetadata(u.clerkId, { status: newStatus, banned: false, approved: true }).catch(() => {});
+          await unbanClerkUser(u.clerkId).catch(() => { });
+          await updateClerkUserMetadata(u.clerkId, { status: newStatus, banned: false, approved: true }).catch(() => { });
         }
       }),
     );
@@ -505,7 +505,7 @@ export class AdminService {
 
     Promise.allSettled(
       users.map(async (u) => {
-        await updateClerkUserMetadata(u.clerkId, { role: newRole }).catch(() => {});
+        await updateClerkUserMetadata(u.clerkId, { role: newRole }).catch(() => { });
       }),
     );
 
@@ -589,9 +589,9 @@ export class AdminService {
     const userIds = Array.from(new Set(recentLogs.map((log) => log.userId)));
     const users = userIds.length
       ? await prisma.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } },
-        })
+        where: { id: { in: userIds } },
+        select: { id: true, email: true, profile: { select: { firstName: true, lastName: true } } },
+      })
       : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
 
