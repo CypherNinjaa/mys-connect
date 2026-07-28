@@ -11,8 +11,9 @@ const upload = multer({
 
 const router = Router();
 
-// Public route for location dropdowns
+// Public routes for location dropdowns & ban reasons
 router.get('/cities', UserController.getCities);
+router.get('/ban-reason', UserController.getBanReason);
 
 // Protected routes (require Clerk authentication & DB user resolution)
 router.use(requireAuth);

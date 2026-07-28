@@ -4,6 +4,7 @@ import { UserService } from '../services/user.service';
 import { uploadToCloudinary } from '../utils/cloudinary';
 import { AppError } from '../middleware/errorHandler';
 import { BloodGroup, Gender } from '@prisma/client';
+import { prisma } from '../utils/prisma';
 import { z } from 'zod';
 
 const optionalText = z.string().trim().max(500).optional();
@@ -136,6 +137,47 @@ export class UserController {
       res.json({
         success: true,
         data: cities,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/users/ban-reason?email=...
+   * Public endpoint to fetch ban/deactivation reason note for a user by email
+   */
+  static async getBanReason(req: Request, res: Response, next: NextFunction) {
+    try {
+      const email = req.query.email as string;
+      if (!email) {
+        return res.status(400).json({ success: false, message: 'Email query parameter required' });
+      }
+
+      const user = await prisma.user.findFirst({
+        where: { email: email.trim() },
+      });
+
+      if (!user || (user.status !== 'DEACTIVATED' && user.status !== 'REJECTED')) {
+        return res.json({ success: true, banned: false, reasonNote: null });
+      }
+
+      const audit = await prisma.auditLog.findFirst({
+        where: {
+          entity: 'User',
+          entityId: user.id,
+          action: { startsWith: 'USER_STATUS_CHANGE_' },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const reasonNote = (audit?.metadata as any)?.reasonNote || 'Account deactivated by administration.';
+
+      return res.json({
+        success: true,
+        banned: true,
+        status: user.status,
+        reasonNote,
       });
     } catch (error) {
       next(error);

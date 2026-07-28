@@ -67,6 +67,24 @@ export class ApiService {
   }
 
   /**
+   * Fetch ban/deactivation reason note for a user by email
+   */
+  static async getBanReason(email: string): Promise<{ banned: boolean; reasonNote?: string } | null> {
+    try {
+      const res = await fetchWithTimeout(
+        `${API.baseUrl}/users/ban-reason?email=${encodeURIComponent(email.trim())}`,
+        { method: 'GET' },
+        8000
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Submit complete member registration
    */
   static async registerProfile(token: string, profileData: RegisterProfileData) {

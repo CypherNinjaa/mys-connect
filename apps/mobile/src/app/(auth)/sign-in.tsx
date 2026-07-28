@@ -18,6 +18,7 @@ import { useAuth, useSignIn } from '@clerk/expo';
 import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
+import { ApiService } from '../../services/api';
 
 export default function SignInScreen() {
   const { isLoaded } = useAuth();
@@ -40,6 +41,30 @@ export default function SignInScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+
+  // Helper to extract and format ban reason notes
+  const processAuthError = async (err: any, userIdentifier: string): Promise<string> => {
+    const rawMsg =
+      err?.errors?.[0]?.longMessage ||
+      err?.errors?.[0]?.message ||
+      err?.message ||
+      'Authentication failed. Please try again.';
+
+    const isBanned =
+      err?.errors?.[0]?.code === 'user_banned' ||
+      rawMsg.toLowerCase().includes('banned') ||
+      rawMsg.toLowerCase().includes('deactivated') ||
+      rawMsg.toLowerCase().includes('rejected');
+
+    if (isBanned && userIdentifier) {
+      const banInfo = await ApiService.getBanReason(userIdentifier);
+      if (banInfo?.banned && banInfo?.reasonNote) {
+        return `Your account has been deactivated by administration.\nReason: "${banInfo.reasonNote}"`;
+      }
+    }
+
+    return rawMsg;
+  };
 
   // ── Password Sign-In ──
   const handlePasswordSignIn = async () => {
@@ -66,12 +91,7 @@ export default function SignInScreen() {
       });
 
       if (response?.error) {
-        const err = response.error as any;
-        const msg =
-          err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
-          err?.message ||
-          'Invalid credentials. Please check your Email / Password.';
+        const msg = await processAuthError(response.error, trimmedId);
         setErrorMessage(msg);
         setIsSubmitting(false);
         return;
@@ -86,11 +106,7 @@ export default function SignInScreen() {
       }
     } catch (err: any) {
       console.error('Sign in exception:', err);
-      const msg =
-        err?.errors?.[0]?.longMessage ||
-        err?.errors?.[0]?.message ||
-        err?.message ||
-        'Invalid Email or Password. Please try again.';
+      const msg = await processAuthError(err, trimmedId);
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
@@ -117,12 +133,7 @@ export default function SignInScreen() {
     try {
       const { error } = await signIn.emailCode.sendCode({ emailAddress: trimmedEmail });
       if (error) {
-        const err = error as any;
-        const msg =
-          err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
-          err?.message ||
-          'Failed to send OTP code. Please check your email address.';
+        const msg = await processAuthError(error, trimmedEmail);
         setErrorMessage(msg);
         setIsSubmitting(false);
         return;
@@ -131,11 +142,7 @@ export default function SignInScreen() {
       setInfoMessage(`A 6-digit OTP verification code has been sent to ${trimmedEmail}`);
     } catch (err: any) {
       console.error('Send OTP error:', err);
-      const msg =
-        err?.errors?.[0]?.longMessage ||
-        err?.errors?.[0]?.message ||
-        err?.message ||
-        'Failed to send OTP code. Please try again.';
+      const msg = await processAuthError(err, trimmedEmail);
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
