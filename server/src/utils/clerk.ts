@@ -101,3 +101,30 @@ export async function createClerkUserWithoutPassword(params: {
     throw new AppError(`Clerk Error: ${clerkErrMsg}`, 400);
   }
 }
+
+/**
+ * Create a Clerk Invitation for a new member
+ */
+export async function createClerkInvitation(params: {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  role?: string;
+}) {
+  try {
+    logger.info(`Sending Clerk invitation email to ${params.email}`);
+    const invitation = await clerkClient.invitations.createInvitation({
+      emailAddress: params.email,
+      publicMetadata: {
+        role: params.role || 'MEMBER',
+        firstName: params.firstName || '',
+        lastName: params.lastName || '',
+      },
+    });
+    return invitation;
+  } catch (error: any) {
+    logger.error(`Clerk createInvitation failed for ${params.email}:`, error);
+    const clerkErrMsg = error.errors?.[0]?.message || error.message || 'Failed to send Clerk invitation';
+    throw new AppError(`Clerk Invitation Error: ${clerkErrMsg}`, 400);
+  }
+}

@@ -12,7 +12,6 @@ import {
   Image,
   Dimensions,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, useSignIn } from '@clerk/expo';
@@ -20,25 +19,37 @@ import { useRouter, Link } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function SignInScreen() {
   const { isLoaded } = useAuth();
   const { signIn, fetchStatus } = useSignIn();
   const router = useRouter();
 
+  // Auth Mode: 'OTP' (Magic Code) or 'PASSWORD'
+  const [authMode, setAuthMode] = useState<'OTP' | 'PASSWORD'>('OTP');
+
+  // Common & Password State
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // OTP State
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+
+  // Loading & Errors
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
-  const handleSignIn = async () => {
+  // ── Password Sign-In ──
+  const handlePasswordSignIn = async () => {
     const trimmedId = identifier.trim();
     const trimmedPassword = password.trim();
 
     if (!trimmedId || !trimmedPassword) {
-      setErrorMessage('Please enter User ID / Email and password.');
+      setErrorMessage('Please enter Email / User ID and password.');
       return;
     }
 
@@ -62,7 +73,7 @@ export default function SignInScreen() {
           err?.errors?.[0]?.longMessage ||
           err?.errors?.[0]?.message ||
           err?.message ||
-          'Invalid credentials. Please check your User ID / Password.';
+          'Invalid credentials. Please check your Email / Password.';
         setErrorMessage(msg);
         setIsSubmitting(false);
         return;
@@ -81,7 +92,102 @@ export default function SignInScreen() {
         err?.errors?.[0]?.longMessage ||
         err?.errors?.[0]?.message ||
         err?.message ||
-        'Invalid User ID or Password. Please try again.';
+        'Invalid Email or Password. Please try again.';
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Email OTP Send Code ──
+  const handleSendOtp = async () => {
+    const trimmedEmail = identifier.trim();
+    if (!trimmedEmail) {
+      setErrorMessage('Please enter your registered email address.');
+      return;
+    }
+
+    if (!isLoaded || !signIn) {
+      setErrorMessage('Authentication system initializing. Please try again.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const { error } = await signIn.emailCode.sendCode({ emailAddress: trimmedEmail });
+      if (error) {
+        const err = error as any;
+        const msg =
+          err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          err?.message ||
+          'Failed to send OTP code. Please check your email address.';
+        setErrorMessage(msg);
+        setIsSubmitting(false);
+        return;
+      }
+      setOtpSent(true);
+      setInfoMessage(`A 6-digit OTP verification code has been sent to ${trimmedEmail}`);
+    } catch (err: any) {
+      console.error('Send OTP error:', err);
+      const msg =
+        err?.errors?.[0]?.longMessage ||
+        err?.errors?.[0]?.message ||
+        err?.message ||
+        'Failed to send OTP code. Please try again.';
+      setErrorMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── Email OTP Verify Code ──
+  const handleVerifyOtp = async () => {
+    const trimmedCode = otpCode.trim();
+    if (!trimmedCode || trimmedCode.length < 6) {
+      setErrorMessage('Please enter the 6-digit code sent to your email.');
+      return;
+    }
+
+    if (!isLoaded || !signIn) {
+      setErrorMessage('Authentication system initializing. Please try again.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      const { error } = await signIn.emailCode.verifyCode({ code: trimmedCode });
+      if (error) {
+        const err = error as any;
+        const msg =
+          err?.errors?.[0]?.longMessage ||
+          err?.errors?.[0]?.message ||
+          err?.message ||
+          'Invalid or expired verification code.';
+        setErrorMessage(msg);
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (signIn.status === 'complete') {
+        await signIn.finalize({
+          navigate: () => router.replace('/'),
+        });
+      } else {
+        setErrorMessage('Verification complete, finalizing session...');
+      }
+    } catch (err: any) {
+      console.error('Verify OTP error:', err);
+      const msg =
+        err?.errors?.[0]?.longMessage ||
+        err?.errors?.[0]?.message ||
+        err?.message ||
+        'Verification failed. Please check the code and try again.';
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
@@ -115,80 +221,220 @@ export default function SignInScreen() {
               resizeMode="contain"
             />
             <Text style={styles.welcomeTitle}>Welcome Back!</Text>
-            <Text style={styles.welcomeSubtitle}>Please login to continue</Text>
+            <Text style={styles.welcomeSubtitle}>Sign in to MYS CONNECT</Text>
           </View>
 
-          {/* Login Form Container */}
+          {/* Mode Switcher Tabs */}
+          <View style={styles.tabContainer}>
+            <TouchableOpacity
+              style={[styles.tabButton, authMode === 'OTP' && styles.activeTabButton]}
+              onPress={() => {
+                setAuthMode('OTP');
+                setErrorMessage(null);
+                setInfoMessage(null);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="mail-unread-outline"
+                size={18}
+                color={authMode === 'OTP' ? '#6B1D2A' : '#718096'}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.tabText, authMode === 'OTP' && styles.activeTabText]}>
+                Email OTP
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, authMode === 'PASSWORD' && styles.activeTabButton]}
+              onPress={() => {
+                setAuthMode('PASSWORD');
+                setErrorMessage(null);
+                setInfoMessage(null);
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="key-outline"
+                size={18}
+                color={authMode === 'PASSWORD' ? '#6B1D2A' : '#718096'}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.tabText, authMode === 'PASSWORD' && styles.activeTabText]}>
+                Password
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Form Container */}
           <View style={styles.formContainer}>
             {errorMessage && (
               <View style={styles.errorBox}>
+                <Ionicons name="alert-circle-outline" size={18} color="#C53030" style={{ marginRight: 6 }} />
                 <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
             )}
 
-            {/* Input 1: User ID / Mobile Number */}
-            <View style={styles.inputCard}>
-              <Ionicons name="person-outline" size={20} color="#718096" style={styles.inputIcon} />
-              <TextInput
-                style={styles.inputField}
-                placeholder="User ID / Mobile Number / Email"
-                placeholderTextColor="#A0AEC0"
-                value={identifier}
-                onChangeText={(val) => {
-                  setIdentifier(val);
-                  if (errorMessage) setErrorMessage(null);
-                }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
+            {infoMessage && (
+              <View style={styles.infoBox}>
+                <Ionicons name="checkmark-circle-outline" size={18} color="#2B6CB0" style={{ marginRight: 6 }} />
+                <Text style={styles.infoText}>{infoMessage}</Text>
+              </View>
+            )}
 
-            {/* Input 2: Password */}
-            <View style={styles.inputCard}>
-              <Ionicons name="lock-closed-outline" size={20} color="#718096" style={styles.inputIcon} />
-              <TextInput
-                style={styles.inputField}
-                placeholder="Password"
-                placeholderTextColor="#A0AEC0"
-                value={password}
-                onChangeText={(val) => {
-                  setPassword(val);
-                  if (errorMessage) setErrorMessage(null);
-                }}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeButton}
-              >
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color="#718096"
-                />
-              </TouchableOpacity>
-            </View>
+            {/* ── EMAIL OTP MODE ── */}
+            {authMode === 'OTP' ? (
+              <>
+                <View style={styles.inputCard}>
+                  <Ionicons name="mail-outline" size={20} color="#718096" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.inputField}
+                    placeholder="Enter your registered Email"
+                    placeholderTextColor="#A0AEC0"
+                    value={identifier}
+                    onChangeText={(val) => {
+                      setIdentifier(val);
+                      if (errorMessage) setErrorMessage(null);
+                    }}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    editable={!otpSent}
+                  />
+                  {otpSent && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setOtpSent(false);
+                        setOtpCode('');
+                        setInfoMessage(null);
+                      }}
+                      style={styles.changeEmailButton}
+                    >
+                      <Text style={styles.changeEmailText}>Change</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
 
-            {/* Forgot Password Link */}
-            <Link href="/(auth)/forgot-password" asChild>
-              <TouchableOpacity style={styles.forgotPasswordRow}>
-                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-              </TouchableOpacity>
-            </Link>
+                {otpSent && (
+                  <View style={styles.inputCard}>
+                    <Ionicons name="keypad-outline" size={20} color="#718096" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="Enter 6-digit OTP Code"
+                      placeholderTextColor="#A0AEC0"
+                      value={otpCode}
+                      onChangeText={(val) => {
+                        setOtpCode(val);
+                        if (errorMessage) setErrorMessage(null);
+                      }}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                    />
+                  </View>
+                )}
 
-            {/* Main LOGIN Button */}
-            <TouchableOpacity
-              style={[styles.loginButton, isLoading && styles.buttonDisabled]}
-              onPress={handleSignIn}
-              disabled={isLoading}
-              activeOpacity={0.85}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginButtonText}>LOGIN</Text>
-              )}
-            </TouchableOpacity>
+                {!otpSent ? (
+                  <TouchableOpacity
+                    style={[styles.loginButton, isLoading && styles.buttonDisabled]}
+                    onPress={handleSendOtp}
+                    disabled={isLoading}
+                    activeOpacity={0.85}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.loginButtonText}>SEND OTP CODE</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.loginButton, isLoading && styles.buttonDisabled]}
+                      onPress={handleVerifyOtp}
+                      disabled={isLoading}
+                      activeOpacity={0.85}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.loginButtonText}>VERIFY & LOGIN</Text>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.resendRow}
+                      onPress={handleSendOtp}
+                      disabled={isLoading}
+                    >
+                      <Text style={styles.resendText}>Didn&apos;t receive code? Resend OTP</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </>
+            ) : (
+              /* ── PASSWORD MODE ── */
+              <>
+                <View style={styles.inputCard}>
+                  <Ionicons name="person-outline" size={20} color="#718096" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.inputField}
+                    placeholder="User ID / Mobile Number / Email"
+                    placeholderTextColor="#A0AEC0"
+                    value={identifier}
+                    onChangeText={(val) => {
+                      setIdentifier(val);
+                      if (errorMessage) setErrorMessage(null);
+                    }}
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
+                </View>
+
+                <View style={styles.inputCard}>
+                  <Ionicons name="lock-closed-outline" size={20} color="#718096" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.inputField}
+                    placeholder="Password"
+                    placeholderTextColor="#A0AEC0"
+                    value={password}
+                    onChangeText={(val) => {
+                      setPassword(val);
+                      if (errorMessage) setErrorMessage(null);
+                    }}
+                    secureTextEntry={!showPassword}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeButton}
+                  >
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color="#718096"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <Link href="/(auth)/forgot-password" asChild>
+                  <TouchableOpacity style={styles.forgotPasswordRow}>
+                    <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                  </TouchableOpacity>
+                </Link>
+
+                <TouchableOpacity
+                  style={[styles.loginButton, isLoading && styles.buttonDisabled]}
+                  onPress={handlePasswordSignIn}
+                  disabled={isLoading}
+                  activeOpacity={0.85}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.loginButtonText}>LOGIN WITH PASSWORD</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
 
             {/* OR Divider */}
             <View style={styles.dividerRow}>
@@ -218,12 +464,11 @@ export default function SignInScreen() {
             </View>
           </View>
 
-          {/* Spacer for bottom artwork */}
-          <View style={{ height: 160 }} />
+          <View style={{ height: 140 }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Background Architectural Mahal Artwork */}
+      {/* Background Architectural Artwork */}
       <View style={styles.mahalWrapper} pointerEvents="none">
         <Image
           source={require('../../../assets/images/mahal-bg.png')}
@@ -232,7 +477,6 @@ export default function SignInScreen() {
         />
       </View>
 
-      {/* Bottom Royal Gold/Maroon Wave Banner */}
       <View style={styles.bottomWaveContainer} pointerEvents="none">
         <View style={styles.goldLine} />
         <View style={styles.maroonWave} />
@@ -250,111 +494,166 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    zIndex: 10,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.xl,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: Spacing.lg,
   },
   logoImage: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    marginBottom: 16,
+    width: 90,
+    height: 90,
+    marginBottom: Spacing.sm,
   },
   welcomeTitle: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '800',
-    color: '#1A202C',
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+    color: '#6B1D2A',
+    marginBottom: 4,
   },
   welcomeSubtitle: {
     fontSize: 14,
     color: '#718096',
-    marginTop: 4,
-    textAlign: 'center',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#EDF2F7',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: Spacing.lg,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
+  activeTabButton: {
+    backgroundColor: '#FFFFFF',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#718096',
+  },
+  activeTabText: {
+    color: '#6B1D2A',
+    fontWeight: '700',
   },
   formContainer: {
     width: '100%',
   },
   errorBox: {
-    backgroundColor: Colors.error.light,
-    borderRadius: 12,
-    padding: Spacing.md,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.error.main,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    borderColor: '#FEB2B2',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: Spacing.md,
   },
   errorText: {
-    color: Colors.error.dark,
+    color: '#C53030',
     fontSize: 13,
-    lineHeight: 18,
+    flex: 1,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF8FF',
+    borderColor: '#90CDF4',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: Spacing.md,
+  },
+  infoText: {
+    color: '#2B6CB0',
+    fontSize: 13,
+    flex: 1,
   },
   inputCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    paddingHorizontal: 16,
+    borderRadius: 12,
+    paddingHorizontal: 14,
     height: 52,
-    marginBottom: 16,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    marginBottom: Spacing.md,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   inputField: {
     flex: 1,
     fontSize: 15,
     color: '#2D3748',
-    height: '100%',
   },
   eyeButton: {
     padding: 6,
   },
+  changeEmailButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#EDF2F7',
+    borderRadius: 6,
+  },
+  changeEmailText: {
+    fontSize: 12,
+    color: '#4A5568',
+    fontWeight: '600',
+  },
   forgotPasswordRow: {
     alignSelf: 'flex-end',
-    marginBottom: 20,
+    marginBottom: Spacing.lg,
   },
   forgotPasswordText: {
     fontSize: 13,
+    color: '#6B1D2A',
     fontWeight: '600',
-    color: '#2B6CB0',
   },
   loginButton: {
-    backgroundColor: Colors.primary[500],
-    height: 52,
+    backgroundColor: '#6B1D2A',
     borderRadius: 12,
-    alignItems: 'center',
+    height: 52,
     justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: Spacing.xs,
     elevation: 3,
-    shadowColor: Colors.primary[500],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
   },
   buttonDisabled: {
-    opacity: 0.65,
+    opacity: 0.6,
   },
   loginButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+  },
+  resendRow: {
+    alignItems: 'center',
+    marginTop: Spacing.md,
+  },
+  resendText: {
+    fontSize: 13,
+    color: '#6B1D2A',
+    fontWeight: '600',
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: Spacing.lg,
   },
   dividerLine: {
     flex: 1,
@@ -362,10 +661,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#CBD5E0',
   },
   dividerText: {
-    marginHorizontal: 16,
+    marginHorizontal: Spacing.md,
+    color: '#A0AEC0',
     fontSize: 12,
     fontWeight: '700',
-    color: '#718096',
   },
   guestButton: {
     flexDirection: 'row',
@@ -373,20 +672,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: Colors.primary[500],
-    height: 52,
+    borderColor: '#6B1D2A',
     borderRadius: 12,
+    height: 50,
   },
   guestButtonText: {
-    color: Colors.primary[500],
+    color: '#6B1D2A',
     fontSize: 15,
     fontWeight: '700',
   },
   registerRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 24,
+    marginTop: Spacing.xl,
   },
   registerPrompt: {
     fontSize: 14,
@@ -394,42 +692,34 @@ const styles = StyleSheet.create({
   },
   registerLink: {
     fontSize: 14,
+    color: '#6B1D2A',
     fontWeight: '700',
-    color: '#2B6CB0',
   },
   mahalWrapper: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 20,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.32,
+    height: 120,
+    opacity: 0.12,
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    opacity: 0.55,
-    zIndex: 1,
   },
   mahalImage: {
-    width: SCREEN_WIDTH,
-    height: '100%',
+    width: SCREEN_WIDTH * 0.9,
+    height: 120,
   },
   bottomWaveContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 70,
-    zIndex: 5,
   },
   goldLine: {
-    height: 4,
-    backgroundColor: Colors.secondary[500],
-    borderTopLeftRadius: 50,
-    borderTopRightRadius: 50,
+    height: 3,
+    backgroundColor: '#D4A017',
   },
   maroonWave: {
-    flex: 1,
-    backgroundColor: Colors.primary[500],
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    height: 16,
+    backgroundColor: '#6B1D2A',
   },
 });

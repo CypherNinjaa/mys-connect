@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { UserStatus, UserRole, EventStatus, NoticeType, NoticePriority } from '@prisma/client';
-import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword } from '../utils/clerk';
+import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
@@ -289,6 +289,19 @@ export class AdminService {
       lastName: data.lastName,
       role: data.role || 'MEMBER',
     });
+
+    // Also dispatch official Clerk Email Invitation so the member can set their password / activate
+    try {
+      await createClerkInvitation({
+        email: data.email,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: data.role || 'MEMBER',
+      });
+      logger.info(`Successfully dispatched Clerk invitation email to ${data.email}`);
+    } catch (invErr) {
+      logger.warn(`Could not dispatch Clerk invitation email to ${data.email} (user created):`, invErr);
+    }
 
     const clerkId = clerkAccount.id;
 
