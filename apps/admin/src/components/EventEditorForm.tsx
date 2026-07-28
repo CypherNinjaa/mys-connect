@@ -466,6 +466,36 @@ export default function EventEditorForm({ initialData, isEdit }: EventEditorForm
                     </div>
                   </label>
                 </div>
+
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Publishing Status</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, isPublished: false, isPublic: false }))}
+                      className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between ${
+                        !form.isPublished
+                          ? 'border-maroon bg-maroon/5 ring-2 ring-maroon/20'
+                          : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="font-bold text-sm text-gray-800">Draft (Unpublished)</span>
+                      <span className="text-xs text-gray-500 mt-1">Hidden from mobile app users</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm((prev) => ({ ...prev, isPublished: true, isPublic: true }))}
+                      className={`p-3 rounded-lg border text-left transition-all flex flex-col justify-between ${
+                        form.isPublished
+                          ? 'border-emerald-600 bg-emerald-50 ring-2 ring-emerald-600/20'
+                          : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="font-bold text-sm text-emerald-800">Published (Live)</span>
+                      <span className="text-xs text-emerald-600 mt-1">Visible to all members immediately</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 

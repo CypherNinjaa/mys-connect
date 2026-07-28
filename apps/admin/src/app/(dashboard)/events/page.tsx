@@ -12,6 +12,7 @@ import {
   cancelEvent,
   duplicateEvent,
   deleteEvent,
+  getEventRegistrations,
   type EventData,
 } from '@/lib/api';
 import { formatDate, getStatusColor } from '@/lib/utils';
@@ -35,6 +36,13 @@ import {
   FileText,
   Building2,
   RefreshCw,
+  X,
+  FileSpreadsheet,
+  Printer,
+  Mail,
+  Phone,
+  UserCheck,
+  Eye,
 } from 'lucide-react';
 
 const CHAPTERS = ['ALL', 'Ranchi', 'Jaipur', 'Kolkata', 'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad'];
@@ -53,6 +61,10 @@ export default function EventsPage() {
   const [chapterFilter, setChapterFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Registered Users Modal State
+  const [viewingEvent, setViewingEvent] = useState<EventData | null>(null);
+  const [registrationSearch, setRegistrationSearch] = useState('');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -87,6 +99,17 @@ export default function EventsPage() {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
       return getEvents(token, params);
+    },
+  });
+
+  // Registered Users Query for Modal
+  const { data: registrationsData, isLoading: regLoading } = useQuery({
+    queryKey: ['event-registrations', viewingEvent?.id],
+    enabled: Boolean(viewingEvent?.id),
+    queryFn: async () => {
+      const token = await getToken();
+      if (!token || !viewingEvent?.id) throw new Error('Not authenticated');
+      return getEventRegistrations(token, viewingEvent.id);
     },
   });
 
@@ -169,17 +192,119 @@ export default function EventsPage() {
     );
   };
 
-  const handleExportCSV = (event: EventData) => {
-    const csvContent = `Event ID,Title,Venue,Start Date\n"${event.id}","${event.title}","${event.venue || ''}","${event.startDate}"`;
+  // CSV Export
+  const handleExportCSV = (event: EventData, regList: any[]) => {
+    const headers = 'Registration ID,Member ID,Full Name,Email,Phone,Occupation,City,Registration Date,Status\n';
+    const rows = regList.map((r) => {
+      const name = `${r.user?.profile?.firstName || ''} ${r.user?.profile?.lastName || r.user?.fullName || ''}`.trim();
+      const email = r.user?.email || '';
+      const phone = r.user?.phone || '';
+      const memId = r.user?.memberId || '';
+      const occ = r.user?.profile?.occupation || '';
+      const city = r.user?.profile?.city?.name || '';
+      const date = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN') : '';
+      const status = r.status || 'REGISTERED';
+      return `"${r.id}","${memId}","${name}","${email}","${phone}","${occ}","${city}","${date}","${status}"`;
+    }).join('\n');
+
+    const csvContent = headers + rows;
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}_registrations.csv`);
+    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}_Registrations.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
+
+  // Printable PDF Export
+  const handleExportPDF = (event: EventData, regList: any[]) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const rowsHtml = regList.map((r, index) => {
+      const name = `${r.user?.profile?.firstName || ''} ${r.user?.profile?.lastName || r.user?.fullName || ''}`.trim() || 'Member';
+      const email = r.user?.email || 'N/A';
+      const phone = r.user?.phone || 'N/A';
+      const memId = r.user?.memberId || 'N/A';
+      const city = r.user?.profile?.city?.name || 'Ranchi';
+      const date = r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN') : 'N/A';
+
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td><strong>${name}</strong><br><small style="color:#666;">ID: ${memId}</small></td>
+          <td>${email}</td>
+          <td>${phone}</td>
+          <td>${city}</td>
+          <td>${date}</td>
+          <td><span class="badge">REGISTERED</span></td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${event.title} - Registered Members</title>
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 24px; color: #1a202c; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #7A0E16; padding-bottom: 12px; margin-bottom: 20px; }
+          .title { color: #7A0E16; font-size: 20px; font-weight: bold; margin: 0; }
+          .meta { font-size: 12px; color: #4a5568; margin-top: 4px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 12px; }
+          th { background-color: #7A0E16; color: white; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; }
+          td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; }
+          tr:nth-child(even) { background-color: #f8f9fa; }
+          .badge { background-color: #c6f6d5; color: #22543d; padding: 2px 6px; borderRadius: 4px; font-size: 10px; font-weight: bold; }
+          .footer { margin-top: 30px; font-size: 10px; text-align: center; color: #a0aec0; border-top: 1px solid #edf2f7; padding-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <h1 class="title">MAHESHWARI YUVA SANGATHAN</h1>
+            <div class="meta"><strong>Event:</strong> ${event.title} | <strong>Venue:</strong> ${event.venue || 'Ranchi'}</div>
+            <div class="meta"><strong>Date:</strong> ${formatDate(event.startDate)} | <strong>Total Registrations:</strong> ${regList.length}</div>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Member Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>City</th>
+              <th>Registered Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml || '<tr><td colspan="7" style="text-align:center;">No registered members found.</td></tr>'}
+          </tbody>
+        </table>
+        <div class="footer">Exported from MYS Connect Admin Platform on ${new Date().toLocaleString()}</div>
+        <script>window.onload = function() { window.print(); }</script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+
+  const rawRegList = (registrationsData as any)?.data?.registrations || (registrationsData as any)?.registrations || [];
+  const filteredRegList = rawRegList.filter((r: any) => {
+    if (!registrationSearch.trim()) return true;
+    const q = registrationSearch.toLowerCase();
+    const name = `${r.user?.profile?.firstName || ''} ${r.user?.profile?.lastName || r.user?.fullName || ''}`.toLowerCase();
+    const email = (r.user?.email || '').toLowerCase();
+    const memId = (r.user?.memberId || '').toLowerCase();
+    return name.includes(q) || email.includes(q) || memId.includes(q);
+  });
 
   return (
     <div className="space-y-6">
@@ -191,7 +316,7 @@ export default function EventsPage() {
             Events Management
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Create, manage, monitor, and publish events for Maheshwari Yuva Sangathan members.
+            Create, publish, unpublish, and manage events for Maheshwari Yuva Sangathan members.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -220,10 +345,10 @@ export default function EventsPage() {
           { label: 'Total Events', val: kpis?.totalEvents ?? '—', color: 'bg-maroon/10 text-maroon border-maroon/20', icon: Calendar },
           { label: 'Upcoming', val: kpis?.upcomingEvents ?? '—', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: Clock },
           { label: 'Ongoing', val: kpis?.ongoingEvents ?? '—', color: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
-          { label: 'Completed', val: kpis?.completedEvents ?? '—', color: 'bg-gray-100 text-gray-700 border-gray-200', icon: CheckCircle2 },
+          { label: 'Completed', val: kpis?.completedEvents ?? '—', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: CheckCircle2 },
           { label: 'Cancelled', val: kpis?.cancelledEvents ?? '—', color: 'bg-red-50 text-red-700 border-red-200', icon: AlertTriangle },
           { label: 'Drafts', val: kpis?.draftEvents ?? '—', color: 'bg-amber-50 text-amber-700 border-amber-200', icon: FileText },
-          { label: 'Registrations', val: kpis?.totalRegistrations ?? '—', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: Users },
+          { label: 'Registrations', val: kpis?.totalRegistrations ?? '—', color: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: Users },
         ].map((item, idx) => (
           <div key={idx} className={`p-3.5 rounded-xl border ${item.color} flex flex-col justify-between shadow-xs transition-all hover:scale-[1.02]`}>
             <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider opacity-80">
@@ -245,7 +370,7 @@ export default function EventsPage() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search by event title, venue, or chapter..."
+              placeholder="Search by title, venue, or chapter..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20 focus:border-maroon transition-all"
@@ -391,7 +516,7 @@ export default function EventsPage() {
                     <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <h3 className="text-base font-semibold text-gray-700">No events found</h3>
                     <p className="text-xs text-gray-400 mt-1 max-w-sm mx-auto">
-                      Try adjusting your search criteria or create a new event for Maheshwari Yuva Sangathan members.
+                      Try adjusting your search criteria or create a new event.
                     </p>
                     <Link
                       href="/events/new"
@@ -407,6 +532,7 @@ export default function EventsPage() {
                   const maxCap = event.maxAttendees || event.maxCapacity || 0;
                   const regCount = event._count?.rsvps || 0;
                   const fillPct = maxCap > 0 ? Math.min(100, Math.round((regCount / maxCap) * 100)) : 0;
+                  const isPublishedLive = event.status === 'PUBLISHED' || event.isPublished;
 
                   return (
                     <tr
@@ -491,12 +617,17 @@ export default function EventsPage() {
                         )}
                       </td>
 
-                      {/* Registrations & Capacity */}
+                      {/* Registrations & View Modal Button */}
                       <td className="px-4 py-4">
-                        <div className="space-y-1 min-w-[120px]">
-                          <div className="flex justify-between text-xs font-semibold text-gray-700">
-                            <span>{regCount} registered</span>
-                            <span>{maxCap > 0 ? `${maxCap} max` : '∞'}</span>
+                        <button
+                          onClick={() => setViewingEvent(event)}
+                          className="space-y-1 min-w-[120px] text-left group hover:opacity-80 transition-opacity"
+                        >
+                          <div className="flex justify-between text-xs font-bold text-maroon group-hover:underline">
+                            <span className="flex items-center gap-1">
+                              <Users className="w-3 h-3" /> {regCount} registered
+                            </span>
+                            <span>{maxCap > 0 ? maxCap : '∞'}</span>
                           </div>
                           {maxCap > 0 && (
                             <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
@@ -508,32 +639,43 @@ export default function EventsPage() {
                               />
                             </div>
                           )}
-                        </div>
+                        </button>
                       </td>
 
-                      {/* Status */}
-                      <td className="px-4 py-4 space-y-1">
-                        <span
-                          className={`inline-block text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${getStatusColor(
-                            event.status
-                          )}`}
-                        >
-                          {event.status}
-                        </span>
-                        <div>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded font-semibold uppercase tracking-wider ${
-                              event.isPublished ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-700'
-                            }`}
-                          >
-                            {event.isPublished ? 'Published' : 'Draft'}
+                      {/* Unified Single Status Badge */}
+                      <td className="px-4 py-4">
+                        {event.status === 'CANCELLED' ? (
+                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider bg-red-100 text-red-800 border border-red-200">
+                            <XCircle className="w-3.5 h-3.5" /> CANCELLED
                           </span>
-                        </div>
+                        ) : event.status === 'COMPLETED' ? (
+                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> COMPLETED
+                          </span>
+                        ) : isPublishedLive ? (
+                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            <Send className="w-3.5 h-3.5" /> PUBLISHED
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-bold uppercase tracking-wider bg-gray-200 text-gray-700 border border-gray-300">
+                            <FileText className="w-3.5 h-3.5" /> DRAFT
+                          </span>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="px-4 py-4 text-right">
                         <div className="flex items-center justify-end gap-1 text-gray-500">
+                          {/* View Registered Members Modal Button */}
+                          <button
+                            onClick={() => setViewingEvent(event)}
+                            className="p-1.5 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                            title="View Registered Members"
+                          >
+                            <Users className="w-4 h-4" />
+                          </button>
+
+                          {/* Edit Event */}
                           <Link
                             href={`/events/${event.id}`}
                             className="p-1.5 hover:text-maroon hover:bg-maroon/10 rounded-lg transition-colors"
@@ -542,12 +684,13 @@ export default function EventsPage() {
                             <Edit className="w-4 h-4" />
                           </Link>
 
-                          {event.isPublished ? (
+                          {/* Unpublish or Publish Toggle */}
+                          {isPublishedLive ? (
                             <button
                               onClick={() => unpublishMutation.mutate(event.id)}
                               disabled={unpublishMutation.isPending}
                               className="p-1.5 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                              title="Unpublish"
+                              title="Unpublish (Set to Draft)"
                             >
                               <EyeOff className="w-4 h-4" />
                             </button>
@@ -556,12 +699,13 @@ export default function EventsPage() {
                               onClick={() => publishMutation.mutate(event.id)}
                               disabled={publishMutation.isPending}
                               className="p-1.5 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                              title="Publish"
+                              title="Publish Live"
                             >
                               <Send className="w-4 h-4" />
                             </button>
                           )}
 
+                          {/* Duplicate Event */}
                           <button
                             onClick={() => duplicateMutation.mutate(event.id)}
                             disabled={duplicateMutation.isPending}
@@ -571,14 +715,7 @@ export default function EventsPage() {
                             <Copy className="w-4 h-4" />
                           </button>
 
-                          <button
-                            onClick={() => handleExportCSV(event)}
-                            className="p-1.5 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="Export Registrations CSV"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-
+                          {/* Cancel Event */}
                           {event.status !== 'CANCELLED' && (
                             <button
                               onClick={() => {
@@ -594,6 +731,7 @@ export default function EventsPage() {
                             </button>
                           )}
 
+                          {/* Delete Event */}
                           <button
                             onClick={() => {
                               if (confirm(`Are you sure you want to delete '${event.title}' permanently?`)) {
@@ -643,6 +781,134 @@ export default function EventsPage() {
           </div>
         )}
       </div>
+
+      {/* Registered Members Modal Drawer */}
+      {viewingEvent && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-gray-200 overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-maroon text-white p-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <UserCheck className="w-5 h-5" />
+                  Registered Members
+                </h2>
+                <p className="text-xs text-amber-200 mt-0.5">
+                  {viewingEvent.title} ({filteredRegList.length} members)
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleExportCSV(viewingEvent, rawRegList)}
+                  className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-white/20"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => handleExportPDF(viewingEvent, rawRegList)}
+                  className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-white/20"
+                >
+                  <Printer className="w-4 h-4 text-amber-300" />
+                  Print PDF
+                </button>
+                <button
+                  onClick={() => setViewingEvent(null)}
+                  className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Filter Toolbar */}
+            <div className="p-4 bg-gray-50 border-b border-gray-200">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search registered member by name, email, or member ID..."
+                  value={registrationSearch}
+                  onChange={(e) => setRegistrationSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-maroon/20"
+                />
+              </div>
+            </div>
+
+            {/* Modal Body / Member List */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {regLoading ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2 text-gray-400">
+                  <RefreshCw className="w-8 h-8 animate-spin text-maroon" />
+                  <span className="text-sm font-medium">Loading registrations...</span>
+                </div>
+              ) : filteredRegList.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Users className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm font-semibold">No registered members found</p>
+                  <p className="text-xs text-gray-400 mt-1">No members have registered for this event yet.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {filteredRegList.map((r: any, idx: number) => {
+                    const name = `${r.user?.profile?.firstName || ''} ${r.user?.profile?.lastName || r.user?.fullName || 'Member'}`.trim();
+                    const email = r.user?.email || 'N/A';
+                    const phone = r.user?.phone || 'N/A';
+                    const memId = r.user?.memberId || `MYS-${r.id.slice(-4)}`;
+                    const city = r.user?.profile?.city?.name || 'Ranchi';
+
+                    return (
+                      <div key={r.id} className="py-3 flex items-center justify-between hover:bg-gray-50 px-2 rounded-lg transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-maroon/10 text-maroon font-bold text-sm flex items-center justify-center shrink-0 border border-maroon/20">
+                            {name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-gray-900 text-sm">{name}</h4>
+                              <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                ID: {memId}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                              <span className="flex items-center gap-1">
+                                <Mail className="w-3 h-3 text-gray-400" /> {email}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Phone className="w-3 h-3 text-gray-400" /> {phone}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="inline-block text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded">
+                            REGISTERED
+                          </span>
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            {r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN') : ''}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-gray-50 border-t border-gray-200 p-4 flex justify-between items-center text-xs text-gray-500">
+              <span>Showing {filteredRegList.length} of {rawRegList.length} registrations</span>
+              <button
+                onClick={() => setViewingEvent(null)}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-lg"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
