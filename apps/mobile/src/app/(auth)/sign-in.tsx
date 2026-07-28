@@ -101,8 +101,33 @@ export default function SignInScreen() {
         await signIn.finalize({
           navigate: () => router.replace('/'),
         });
+      } else if (
+        signIn.status === 'needs_first_factor' ||
+        signIn.status === 'needs_second_factor' ||
+        signIn.status === 'needs_client_trust'
+      ) {
+        let codeSent = false;
+        try {
+          if (signIn.supportedSecondFactors?.some((f: any) => f.strategy === 'email_code')) {
+            await signIn.mfa.sendEmailCode();
+            codeSent = true;
+          } else if (signIn.supportedFirstFactors?.some((f: any) => f.strategy === 'email_code')) {
+            await signIn.emailCode.sendCode();
+            codeSent = true;
+          }
+        } catch (mfaErr) {
+          console.warn('Auto send email code warning:', mfaErr);
+        }
+
+        setAuthMode('OTP');
+        setOtpSent(true);
+        setInfoMessage(
+          codeSent
+            ? `Security Verification: A 6-digit verification code has been sent to ${trimmedId}. Please enter it below to complete sign in.`
+            : `Additional email verification required. Please enter the 6-digit code sent to ${trimmedId}.`
+        );
       } else {
-        setErrorMessage('Sign in requires additional verification steps.');
+        setErrorMessage(`Sign in requires additional verification steps (${signIn.status}).`);
       }
     } catch (err: any) {
       console.error('Sign in exception:', err);
@@ -166,14 +191,18 @@ export default function SignInScreen() {
     setErrorMessage(null);
 
     try {
-      const { error } = await signIn.emailCode.verifyCode({ code: trimmedCode });
-      if (error) {
-        const err = error as any;
-        const msg =
-          err?.errors?.[0]?.longMessage ||
-          err?.errors?.[0]?.message ||
-          err?.message ||
-          'Invalid or expired verification code.';
+      let res: any;
+      if (
+        signIn.status === 'needs_second_factor' ||
+        signIn.status === 'needs_client_trust'
+      ) {
+        res = await signIn.mfa.verifyEmailCode({ code: trimmedCode });
+      } else {
+        res = await signIn.emailCode.verifyCode({ code: trimmedCode });
+      }
+
+      if (res?.error) {
+        const msg = await processAuthError(res.error, identifier);
         setErrorMessage(msg);
         setIsSubmitting(false);
         return;
@@ -184,15 +213,11 @@ export default function SignInScreen() {
           navigate: () => router.replace('/'),
         });
       } else {
-        setErrorMessage('Verification complete, finalizing session...');
+        setErrorMessage(`Verification complete. Status: ${signIn.status}`);
       }
     } catch (err: any) {
       console.error('Verify OTP error:', err);
-      const msg =
-        err?.errors?.[0]?.longMessage ||
-        err?.errors?.[0]?.message ||
-        err?.message ||
-        'Verification failed. Please check the code and try again.';
+      const msg = await processAuthError(err, identifier);
       setErrorMessage(msg);
     } finally {
       setIsSubmitting(false);
