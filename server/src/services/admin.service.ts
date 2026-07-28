@@ -835,44 +835,68 @@ export class AdminService {
   static async createEvent(
     data: {
       title: string;
-      description: string;
+      description?: string;
       shortDesc?: string;
       startDate: Date;
       endDate?: Date;
       startTime?: string;
       endTime?: string;
       isAllDay?: boolean;
+      registrationDeadline?: Date;
       venue?: string;
       address?: string;
       cityId?: string;
       mapUrl?: string;
       isOnline?: boolean;
       meetingLink?: string;
+      latitude?: number;
+      longitude?: number;
+      chapter?: string;
+      category?: string;
       coverImageUrl?: string;
       isPublic?: boolean;
+      isPublished?: boolean;
       maxAttendees?: number;
+      allowWaitlist?: boolean;
+      registrationOpen?: boolean;
+      contactName?: string;
+      contactPhone?: string;
+      shareImage?: string;
+      shareDescription?: string;
     },
     adminUserId: string,
   ) {
     const event = await prisma.event.create({
       data: {
         title: data.title,
-        description: data.description,
+        description: data.description || '',
         shortDesc: data.shortDesc,
         startDate: data.startDate,
         endDate: data.endDate,
         startTime: data.startTime,
         endTime: data.endTime,
         isAllDay: data.isAllDay ?? false,
+        registrationDeadline: data.registrationDeadline,
         venue: data.venue,
         address: data.address,
         cityId: data.cityId,
         mapUrl: data.mapUrl,
         isOnline: data.isOnline ?? false,
         meetingLink: data.meetingLink,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        chapter: data.chapter || 'Ranchi',
+        category: data.category || 'General',
         coverImageUrl: data.coverImageUrl,
+        status: data.isPublished ? EventStatus.PUBLISHED : EventStatus.DRAFT,
         isPublic: data.isPublic ?? true,
         maxAttendees: data.maxAttendees,
+        allowWaitlist: data.allowWaitlist ?? false,
+        registrationOpen: data.registrationOpen ?? true,
+        contactName: data.contactName,
+        contactPhone: data.contactPhone,
+        shareImage: data.shareImage,
+        shareDescription: data.shareDescription,
         createdById: adminUserId,
       },
       include: { city: true, _count: { select: { rsvps: true } } },
@@ -905,21 +929,39 @@ export class AdminService {
       startTime?: string;
       endTime?: string;
       isAllDay?: boolean;
+      registrationDeadline?: Date;
       venue?: string;
       address?: string;
       cityId?: string;
       mapUrl?: string;
       isOnline?: boolean;
       meetingLink?: string;
+      latitude?: number;
+      longitude?: number;
+      chapter?: string;
+      category?: string;
       coverImageUrl?: string;
       isPublic?: boolean;
+      isPublished?: boolean;
       maxAttendees?: number;
+      allowWaitlist?: boolean;
+      registrationOpen?: boolean;
+      contactName?: string;
+      contactPhone?: string;
+      shareImage?: string;
+      shareDescription?: string;
     },
     adminUserId: string,
   ) {
+    const updateData: any = { ...data };
+    if ('isPublished' in data) {
+      updateData.status = data.isPublished ? EventStatus.PUBLISHED : EventStatus.DRAFT;
+      delete updateData.isPublished;
+    }
+
     const event = await prisma.event.update({
       where: { id },
-      data,
+      data: updateData,
       include: { city: true, _count: { select: { rsvps: true } } },
     });
 

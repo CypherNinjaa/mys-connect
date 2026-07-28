@@ -236,16 +236,8 @@ export class AdminController {
         const url = await uploadToCloudinary(req.file.buffer, 'mys-connect/events');
         req.body.coverImageUrl = url;
       }
-      if (req.body.startDate && typeof req.body.startDate === 'string') {
-        req.body.startDate = new Date(req.body.startDate);
-      }
-      if (req.body.endDate && typeof req.body.endDate === 'string') {
-        req.body.endDate = new Date(req.body.endDate);
-      }
-      if (req.body.maxAttendees) {
-        req.body.maxAttendees = parseInt(String(req.body.maxAttendees), 10);
-      }
-      const result = await AdminService.createEvent(req.body, adminUserId);
+      const data = normalizeEventPayload(req.body);
+      const result = await AdminService.createEvent(data, adminUserId);
 
       res.status(201).json({
         success: true,
@@ -268,16 +260,8 @@ export class AdminController {
         const url = await uploadToCloudinary(req.file.buffer, 'mys-connect/events');
         req.body.coverImageUrl = url;
       }
-      if (req.body.startDate && typeof req.body.startDate === 'string') {
-        req.body.startDate = new Date(req.body.startDate);
-      }
-      if (req.body.endDate && typeof req.body.endDate === 'string') {
-        req.body.endDate = new Date(req.body.endDate);
-      }
-      if (req.body.maxAttendees) {
-        req.body.maxAttendees = parseInt(String(req.body.maxAttendees), 10);
-      }
-      const result = await AdminService.updateEvent(id, req.body, adminUserId);
+      const data = normalizeEventPayload(req.body);
+      const result = await AdminService.updateEvent(id, data, adminUserId);
 
       res.json({
         success: true,
@@ -683,4 +667,32 @@ export class AdminController {
       next(error);
     }
   }
+}
+
+function normalizeEventPayload(body: any) {
+  const data = { ...body };
+  if (data.startDate && typeof data.startDate === 'string') data.startDate = new Date(data.startDate);
+  if (data.endDate && typeof data.endDate === 'string') data.endDate = new Date(data.endDate);
+  if (data.registrationDeadline && typeof data.registrationDeadline === 'string') {
+    data.registrationDeadline = new Date(data.registrationDeadline);
+  }
+
+  if ('isPublic' in data) data.isPublic = String(data.isPublic) === 'true';
+  if ('isPublished' in data) data.isPublished = String(data.isPublished) === 'true';
+  if ('isOnline' in data) data.isOnline = String(data.isOnline) === 'true';
+  if ('isAllDay' in data) data.isAllDay = String(data.isAllDay) === 'true';
+  if ('allowWaitlist' in data) data.allowWaitlist = String(data.allowWaitlist) === 'true';
+  if ('registrationOpen' in data) data.registrationOpen = String(data.registrationOpen) === 'true';
+
+  if (data.maxAttendees !== undefined && data.maxAttendees !== null && data.maxAttendees !== '') {
+    data.maxAttendees = parseInt(String(data.maxAttendees), 10);
+  }
+  if (data.latitude !== undefined && data.latitude !== null && data.latitude !== '') {
+    data.latitude = parseFloat(String(data.latitude));
+  }
+  if (data.longitude !== undefined && data.longitude !== null && data.longitude !== '') {
+    data.longitude = parseFloat(String(data.longitude));
+  }
+
+  return data;
 }

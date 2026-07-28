@@ -14,7 +14,7 @@ const getDevHostIp = (): string => {
     }
   }
 
-  return Platform.OS === 'android' ? '192.168.1.2' : 'localhost';
+  return Platform.OS === 'android' ? '192.168.1.4' : 'localhost';
 };
 
 const DEV_IP = getDevHostIp();
