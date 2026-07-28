@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +10,7 @@ import { NETWORK_CONFIG } from '../../config/network.config';
 
 export default function NetworkErrorScreen() {
   const { signOut } = useAuth();
+  const { showAlert } = useCustomAlert();
   const router = useRouter();
   const [retrying, setRetrying] = useState(false);
 
@@ -17,18 +19,25 @@ export default function NetworkErrorScreen() {
     try {
       const isServerOnline = await ApiService.checkHealth();
       if (isServerOnline) {
-        Alert.alert('Connection Restored', 'Successfully connected to MYS Server!', [
-          { text: 'Continue', onPress: () => router.replace('/') },
-        ]);
+        showAlert({
+          title: 'Connection Restored 🎉',
+          message: 'Successfully connected to MYS Server!',
+          type: 'success',
+          buttons: [{ text: 'Continue', onPress: () => router.replace('/') }],
+        });
       } else {
-        Alert.alert(
-          'Server Unreachable',
-          `Could not connect to MYS server at:\n${NETWORK_CONFIG.baseUrl}\n\nPlease check if your backend server is running and device network is active.`,
-          [{ text: 'OK' }]
-        );
+        showAlert({
+          title: 'Server Unreachable',
+          message: `Could not connect to MYS server at:\n${NETWORK_CONFIG.baseUrl}\n\nPlease check if your backend server is running and device network is active.`,
+          type: 'warning',
+        });
       }
     } catch {
-      Alert.alert('Connection Failed', 'Network check timed out. Please try again.');
+      showAlert({
+        title: 'Connection Failed',
+        message: 'Network check timed out. Please try again.',
+        type: 'error',
+      });
     } finally {
       setRetrying(false);
     }

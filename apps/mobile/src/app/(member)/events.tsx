@@ -8,7 +8,6 @@ import {
   StyleSheet,
   RefreshControl,
   StatusBar,
-  Alert,
   Platform,
   BackHandler,
 } from 'react-native';
@@ -16,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { ApiService } from '../../services/api';
 import { EventCacheManager } from '../../services/eventCacheManager';
 import { EventCard, EventItemData } from '../../components/events/EventCard';
@@ -31,6 +31,7 @@ const TABS: { label: string; status: TabStatus }[] = [
 
 export default function EventsScreen() {
   const { getToken, isSignedIn } = useAuth();
+  const { showAlert } = useCustomAlert();
   const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<TabStatus>('UPCOMING');
@@ -172,7 +173,7 @@ export default function EventsScreen() {
   // Optimistic Registration Toggle
   const handleRegisterToggle = async (event: EventItemData) => {
     if (!isSignedIn) {
-      Alert.alert('Authentication Required', 'Please sign in to register for events.');
+      showAlert({ title: 'Authentication Required', message: 'Please sign in to register for events.', type: 'warning' });
       return;
     }
 
@@ -193,10 +194,10 @@ export default function EventsScreen() {
 
       if (newStatus) {
         await ApiService.registerForEvent(token, event.id);
-        Alert.alert('Registered 🎉', `You have registered for ${event.title}`);
+        showAlert({ title: 'Registered 🎉', message: `You have registered for ${event.title}`, type: 'success' });
       } else {
         await ApiService.cancelEventRegistration(token, event.id);
-        Alert.alert('Registration Cancelled', `You unregistered from ${event.title}`);
+        showAlert({ title: 'Registration Cancelled', message: `You unregistered from ${event.title}`, type: 'info' });
       }
     } catch (err: any) {
       console.error('Registration toggle error:', err);
@@ -205,13 +206,21 @@ export default function EventsScreen() {
         prev.map((e) => (e.id === event.id ? { ...e, isRegistered: !newStatus } : e))
       );
       EventCacheManager.updateRegistrationInCache(event.id, !newStatus);
-      Alert.alert('Registration Error', err.message || 'Action failed. Please try again.');
+      showAlert({ title: 'Registration Error', message: err.message || 'Action failed. Please try again.', type: 'error' });
     } finally {
       setRegisteringEventId(null);
     }
   };
 
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 12;
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/home');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -222,7 +231,7 @@ export default function EventsScreen() {
         <View style={styles.headerRow}>
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => router.back()}
+            onPress={handleBack}
             activeOpacity={0.7}
           >
             <Ionicons name="arrow-back" size={24} color="#FFFFFF" />

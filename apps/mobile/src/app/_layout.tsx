@@ -4,6 +4,7 @@ import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { CustomAlertProvider } from '../context/CustomAlertContext';
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
@@ -18,8 +19,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-          <StatusBar style="light" />
-          <Slot />
+          <CustomAlertProvider>
+            <StatusBar style="light" />
+            <Slot />
+          </CustomAlertProvider>
         </ClerkProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

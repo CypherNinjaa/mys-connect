@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   Modal,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,7 @@ import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { ApiService, RegisterProfileData } from '../../services/api';
 import { ProfileSkeleton } from '../../components/ui/SkeletonLoader';
 import { CloudinaryMedia } from '../../components/ui/CloudinaryMedia';
@@ -40,6 +40,7 @@ const GENDERS = [
 
 export default function ProfileScreen() {
   const { getToken, isSignedIn, signOut } = useAuth();
+  const { showAlert } = useCustomAlert();
   const router = useRouter();
 
   const [user, setUser] = useState<any>(null);
@@ -135,10 +136,10 @@ export default function ProfileScreen() {
           profile: { ...prev?.profile, avatarUrl: updated?.avatarUrl || base64OrUri },
         }));
         await loadProfile();
-        Alert.alert('Success 🎉', 'Profile photo updated successfully!');
+        showAlert({ title: 'Success 🎉', message: 'Profile photo updated successfully!', type: 'success' });
       }
     } catch (err: any) {
-      Alert.alert('Upload Error', err.message || 'Failed to update avatar photo');
+      showAlert({ title: 'Upload Error', message: err.message || 'Failed to update avatar photo', type: 'error' });
     }
   };
 
@@ -201,11 +202,11 @@ export default function ProfileScreen() {
             locCity = addr.city || addr.town || addr.village || addr.state_district || '';
           }
         } catch {
-          // Ignore fetch error
+          // Ignore OSM error
         }
       }
 
-      if (locAddress) {
+      if (locAddress || coords) {
         setAddress(locAddress);
         if (locPinCode) setPinCode(locPinCode);
 
@@ -214,13 +215,13 @@ export default function ProfileScreen() {
           if (matched) setCityId(matched.id);
         }
 
-        Alert.alert('Location Updated 📍', `Detected: ${locCity || 'Current Location'}`);
+        showAlert({ title: 'Location Updated 📍', message: `Detected: ${locCity || 'Current Location'}`, type: 'success' });
       } else {
-        Alert.alert('Location Required', 'Could not determine GPS coordinates. Please enter your address manually.');
+        showAlert({ title: 'Location Required', message: 'Could not determine GPS coordinates. Please enter your address manually.', type: 'warning' });
       }
     } catch (err: any) {
       console.error('Fetch location error:', err);
-      Alert.alert('Location Error', err.message || 'Could not fetch current GPS location.');
+      showAlert({ title: 'Location Error', message: err.message || 'Could not fetch current GPS location.', type: 'error' });
     } finally {
       setIsLocating(false);
     }
@@ -257,7 +258,7 @@ export default function ProfileScreen() {
       if (result?.user) setUser(result.user);
       setActiveModal(null);
       await loadProfile();
-      Alert.alert('Success', 'Profile updated successfully!');
+      showAlert({ title: 'Success 🎉', message: 'Profile updated successfully!', type: 'success' });
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to save profile changes');
     } finally {
@@ -266,17 +267,22 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/(auth)/sign-in');
+    showAlert({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out?',
+      type: 'confirm',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+            router.replace('/(auth)/sign-in');
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   if (loading) {

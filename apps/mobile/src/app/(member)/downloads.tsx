@@ -87,10 +87,18 @@ export default function DownloadsScreen() {
   const [downloads] = useState<DownloadItem[]>(STATIC_DOWNLOADS);
   const [refreshing, setRefreshing] = useState(false);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/settings');
+    }
+  };
+
   useEffect(() => {
     const onBackPress = () => {
-      if (router.canGoBack()) { router.back(); return true; }
-      return false;
+      handleBack();
+      return true;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => sub.remove();
@@ -107,7 +115,7 @@ export default function DownloadsScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.headerBar, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.neutral[0]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Downloads</Text>

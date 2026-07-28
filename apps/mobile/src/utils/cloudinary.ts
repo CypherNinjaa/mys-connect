@@ -1,5 +1,3 @@
-import { Alert } from 'react-native';
-
 export interface CloudinaryTransformOptions {
   width?: number;
   height?: number;
@@ -57,50 +55,45 @@ export function buildCloudinaryUrl(
  * Uses safe legacy import fallback for Expo SDK 52/53/54 compatibility.
  */
 export async function downloadCloudinaryImage(imageUrl: string, filename = 'mys_download.jpg') {
+  if (!imageUrl) throw new Error('No image URL provided');
+
+  let FileSystemModule: any = null;
+  let SharingModule: any = null;
+
   try {
-    if (!imageUrl) throw new Error('No image URL provided');
-
-    let FileSystemModule: any = null;
-    let SharingModule: any = null;
-
+    FileSystemModule = require('expo-file-system/legacy');
+  } catch {
     try {
-      FileSystemModule = require('expo-file-system/legacy');
-    } catch {
-      try {
-        FileSystemModule = require('expo-file-system');
-      } catch {}
-    }
-
-    try {
-      SharingModule = require('expo-sharing');
+      FileSystemModule = require('expo-file-system');
     } catch {}
-
-    const cacheDir = FileSystemModule?.cacheDirectory || FileSystemModule?.documentDirectory || '';
-    const fileUri = `${cacheDir}${filename}`;
-
-    let savedUri = imageUrl;
-
-    if (FileSystemModule && typeof FileSystemModule.downloadAsync === 'function') {
-      const downloadRes = await FileSystemModule.downloadAsync(imageUrl, fileUri);
-      if (downloadRes && downloadRes.status === 200) {
-        savedUri = downloadRes.uri;
-      }
-    }
-
-    if (SharingModule && typeof SharingModule.isAvailableAsync === 'function') {
-      const isAvailable = await SharingModule.isAvailableAsync();
-      if (isAvailable) {
-        await SharingModule.shareAsync(savedUri, {
-          mimeType: 'image/jpeg',
-          dialogTitle: 'Save or Share Image',
-        });
-        return;
-      }
-    }
-
-    Alert.alert('Image Downloaded', `Image ready: ${savedUri}`);
-  } catch (err: any) {
-    console.error('Download Cloudinary image error:', err);
-    Alert.alert('Download Error', err.message || 'Could not download image');
   }
+
+  try {
+    SharingModule = require('expo-sharing');
+  } catch {}
+
+  const cacheDir = FileSystemModule?.cacheDirectory || FileSystemModule?.documentDirectory || '';
+  const fileUri = `${cacheDir}${filename}`;
+
+  let savedUri = imageUrl;
+
+  if (FileSystemModule && typeof FileSystemModule.downloadAsync === 'function') {
+    const downloadRes = await FileSystemModule.downloadAsync(imageUrl, fileUri);
+    if (downloadRes && downloadRes.status === 200) {
+      savedUri = downloadRes.uri;
+    }
+  }
+
+  if (SharingModule && typeof SharingModule.isAvailableAsync === 'function') {
+    const isAvailable = await SharingModule.isAvailableAsync();
+    if (isAvailable) {
+      await SharingModule.shareAsync(savedUri, {
+        mimeType: 'image/jpeg',
+        dialogTitle: 'Save or Share Image',
+      });
+      return savedUri;
+    }
+  }
+
+  return savedUri;
 }

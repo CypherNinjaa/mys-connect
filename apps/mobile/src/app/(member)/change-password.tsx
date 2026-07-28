@@ -9,9 +9,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   BackHandler,
 } from 'react-native';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser, useSignIn } from '@clerk/expo';
 import { useRouter } from 'expo-router';
@@ -22,17 +22,23 @@ export default function ChangePasswordScreen() {
   const { isLoaded, user } = useUser();
   const { getToken } = useAuth();
   const { signIn } = useSignIn();
+  const { showAlert } = useCustomAlert();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/settings');
+    }
+  };
 
   // Android Hardware Back Navigation Handler
   useEffect(() => {
     const onBackPress = () => {
-      if (router.canGoBack()) {
-        router.back();
-        return true;
-      }
-      return false;
+      handleBack();
+      return true;
     };
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
@@ -201,7 +207,7 @@ export default function ChangePasswordScreen() {
     <View style={styles.container}>
       {/* Header bar */}
       <View style={[styles.headerBar, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Security & Password</Text>

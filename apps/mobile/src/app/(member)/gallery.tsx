@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { ApiService } from '../../services/api';
 import { GalleryCacheManager } from '../../services/galleryCacheManager';
 import { GalleryCard, GalleryItemData } from '../../components/gallery/GalleryCard';
@@ -34,6 +35,7 @@ const CATEGORY_TABS: CategoryTab[] = ['All', 'Events', 'Celebrations', 'Others']
 
 export default function GalleryScreen() {
   const { getToken } = useAuth();
+  const { showAlert } = useCustomAlert();
   const router = useRouter();
 
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
@@ -73,7 +75,7 @@ export default function GalleryScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.push('/(member)/home');
+      router.replace('/(member)/home');
     }
     return true;
   }, [viewerVisible, isSearching, router]);
@@ -218,11 +220,8 @@ export default function GalleryScreen() {
         if (!matchesCategory) return false;
 
         if (debouncedQuery.trim()) {
-          const q = debouncedQuery.trim().toLowerCase();
-          const titleMatch = item.title?.toLowerCase().includes(q);
-          const albumMatch = item.albumTitle?.toLowerCase().includes(q);
-          const categoryMatch = item.category?.toLowerCase().includes(q);
-          return titleMatch || albumMatch || categoryMatch;
+          const q = debouncedQuery.toLowerCase();
+          return item.title?.toLowerCase().includes(q) || item.category?.toLowerCase().includes(q);
         }
 
         return true;
@@ -247,7 +246,7 @@ export default function GalleryScreen() {
       const fullResUrl = buildCloudinaryUrl(photo.imageUrl, { quality: 'auto', format: 'auto' });
       await downloadCloudinaryImage(fullResUrl, `mys_gallery_${photo.id}.jpg`);
     } catch (err: any) {
-      Alert.alert('Download Error', err.message || 'Could not download photo');
+      showAlert({ title: 'Download Error', message: err.message || 'Could not download photo', type: 'error' });
     }
   };
 

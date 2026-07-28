@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
 import { useAuth } from '@clerk/expo';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
@@ -15,9 +17,27 @@ import { SkeletonItem } from '../../components/ui/SkeletonLoader';
 
 export default function NotificationsScreen() {
   const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/home');
+    }
+  };
+
+  useEffect(() => {
+    const onBackPress = () => {
+      handleBack();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [router]);
 
   const fetchNotifications = async () => {
     try {

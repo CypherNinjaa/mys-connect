@@ -9,6 +9,7 @@ import {
   BackHandler,
   Linking,
 } from 'react-native';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { useRouter } from 'expo-router';
 import { useAuth, useClerk } from '@clerk/expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,52 +29,68 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { signOut } = useClerk();
   const { isSignedIn } = useAuth();
+  const { showAlert } = useCustomAlert();
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/home');
+    }
+  };
 
   useEffect(() => {
     const onBackPress = () => {
-      if (router.canGoBack()) { router.back(); return true; }
-      return false;
+      handleBack();
+      return true;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => sub.remove();
   }, [router]);
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await signOut();
-            router.replace('/(auth)/sign-in');
-          } catch (err) {
-            console.error('Sign out error:', err);
-          }
+    showAlert({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out?',
+      type: 'confirm',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              router.replace('/(auth)/sign-in');
+            } catch (err) {
+              console.error('Sign out error:', err);
+            }
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete Account',
-      'This action is irreversible. All your data will be permanently deleted. Are you sure?',
-      [
+    showAlert({
+      title: 'Delete Account',
+      message: 'This action is irreversible. All your data will be permanently deleted. Are you sure?',
+      type: 'warning',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            Alert.alert(
-              'Contact Admin',
-              'To delete your account, please contact the MYS admin team at info@mysranchi.org'
-            );
+            showAlert({
+              title: 'Contact Admin',
+              message: 'To delete your account, please contact the MYS admin team at info@mysranchi.org',
+              type: 'info',
+            });
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   const sections: { title: string; items: SettingItem[] }[] = [
@@ -150,7 +167,7 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.headerBar, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.neutral[0]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>

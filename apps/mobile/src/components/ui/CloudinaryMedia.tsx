@@ -6,10 +6,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StyleSheet,
-  Alert,
   ViewStyle,
   ImageStyle,
 } from 'react-native';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { buildCloudinaryUrl, downloadCloudinaryImage, CloudinaryTransformOptions } from '../../utils/cloudinary';
@@ -44,14 +44,15 @@ export function CloudinaryMedia({
 }: CloudinaryMediaProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const { showAlert } = useCustomAlert();
 
-  const optimizedUrl = imageUri ? buildCloudinaryUrl(imageUri, { width, height, ...transformOptions }) : null;
+  const optimizedUrl = imageUri ? buildCloudinaryUrl(imageUri, transformOptions) : null;
 
   const handlePickAndUpload = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Permission Required', 'Permission to access media library is required.');
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        showAlert({ title: 'Permission Required', message: 'Gallery access permission is required to upload images.', type: 'warning' });
         return;
       }
 
@@ -74,7 +75,7 @@ export function CloudinaryMedia({
       }
     } catch (err: any) {
       console.error('Cloudinary upload picker error:', err);
-      Alert.alert('Error', err.message || 'Failed to select image');
+      showAlert({ title: 'Upload Error', message: err.message || 'Failed to select image', type: 'error' });
     } finally {
       setIsUploading(false);
     }

@@ -25,10 +25,18 @@ export default function AboutScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/settings');
+    }
+  };
+
   useEffect(() => {
     const onBackPress = () => {
-      if (router.canGoBack()) { router.back(); return true; }
-      return false;
+      handleBack();
+      return true;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => sub.remove();
@@ -37,7 +45,7 @@ export default function AboutScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.headerBar, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.neutral[0]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>About Us</Text>

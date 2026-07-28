@@ -8,17 +8,33 @@ import {
   StyleSheet,
   Image,
   RefreshControl,
+  BackHandler,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { ApiService } from '../../services/api';
 import { MemberCardSkeleton } from '../../components/ui/SkeletonLoader';
 
 export default function GuestMembersScreen() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    const onBackPress = () => {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/(guest)/home');
+      }
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [router]);
 
   const fetchMembers = async () => {
     try {

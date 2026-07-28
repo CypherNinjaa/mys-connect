@@ -27,18 +27,23 @@ export default function NoticesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<any | null>(null);
 
+  const handleBack = () => {
+    if (selectedNotice) {
+      setSelectedNotice(null);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/home');
+    }
+  };
+
   // Android Hardware Back Navigation Handler
   useEffect(() => {
     const onBackPress = () => {
-      if (selectedNotice) {
-        setSelectedNotice(null);
-        return true;
-      }
-      if (router.canGoBack()) {
-        router.back();
-        return true;
-      }
-      return false;
+      handleBack();
+      return true;
     };
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);

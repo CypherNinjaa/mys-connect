@@ -12,6 +12,7 @@ import {
   BackHandler,
   StatusBar,
 } from 'react-native';
+import { useCustomAlert } from '../../context/CustomAlertContext';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/expo';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export default function EventDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getToken } = useAuth();
+  const { showAlert } = useCustomAlert();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [event, setEvent] = useState<any>(null);
@@ -29,10 +31,18 @@ export default function EventDetailScreen() {
   const [registering, setRegistering] = useState(false);
   const [isRegistered, setIsRegistered] = useState(false);
 
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(member)/events');
+    }
+  };
+
   useEffect(() => {
     const onBackPress = () => {
-      if (router.canGoBack()) { router.back(); return true; }
-      return false;
+      handleBack();
+      return true;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => sub.remove();
@@ -59,33 +69,38 @@ export default function EventDetailScreen() {
       setRegistering(true);
       const token = await getToken();
       if (!token) {
-        Alert.alert('Sign In Required', 'Please sign in to register for events.');
+        showAlert({ title: 'Sign In Required', message: 'Please sign in to register for events.', type: 'warning' });
         return;
       }
       if (isRegistered) {
-        Alert.alert('Cancel Registration', 'Are you sure you want to cancel your registration?', [
-          { text: 'No', style: 'cancel' },
-          {
-            text: 'Yes, Cancel',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await ApiService.cancelEventRegistration(token, id);
-                setIsRegistered(false);
-                Alert.alert('Cancelled', 'Your registration has been cancelled.');
-              } catch (err: any) {
-                Alert.alert('Error', err.message || 'Failed to cancel registration.');
-              }
+        showAlert({
+          title: 'Cancel Registration',
+          message: 'Are you sure you want to cancel your registration?',
+          type: 'confirm',
+          buttons: [
+            { text: 'No', style: 'cancel' },
+            {
+              text: 'Yes, Cancel',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await ApiService.cancelEventRegistration(token, id);
+                  setIsRegistered(false);
+                  showAlert({ title: 'Cancelled', message: 'Your registration has been cancelled.', type: 'info' });
+                } catch (err: any) {
+                  showAlert({ title: 'Error', message: err.message || 'Failed to cancel registration.', type: 'error' });
+                }
+              },
             },
-          },
-        ]);
+          ],
+        });
       } else {
         await ApiService.registerForEvent(token, id);
         setIsRegistered(true);
-        Alert.alert('Registered!', 'You have been registered for this event.');
+        showAlert({ title: 'Registered! 🎉', message: 'You have been registered for this event.', type: 'success' });
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to register.');
+      showAlert({ title: 'Error', message: err.message || 'Failed to register.', type: 'error' });
     } finally {
       setRegistering(false);
     }
@@ -132,7 +147,7 @@ export default function EventDetailScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       <View style={[styles.headerBar, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.neutral[0]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>Event Details</Text>
