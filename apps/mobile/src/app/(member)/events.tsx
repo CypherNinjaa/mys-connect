@@ -359,7 +359,7 @@ export default function EventsScreen() {
               <EventCard
                 event={item}
                 activeTab={activeTab}
-                onPress={() => router.push(`/(member)/event-detail?id=${item.id}`)}
+                onPress={() => router.push(`/(member)/event-detail?id=${item.id}&from=events`)}
                 onRegisterToggle={handleRegisterToggle}
                 isRegistering={registeringEventId === item.id}
               />

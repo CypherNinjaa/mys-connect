@@ -179,43 +179,56 @@ model City {
 
 /// Events — managed by admins, visible to members
 model Event {
-  id            String      @id @default(cuid())
-  title         String
-  description   String
-  shortDesc     String?
+  id                  String      @id @default(cuid())
+  title               String
+  description         String
+  shortDesc           String?
   
   // Date & Time
-  startDate     DateTime
-  endDate       DateTime?
-  startTime     String?
-  endTime       String?
-  isAllDay      Boolean     @default(false)
+  startDate           DateTime
+  endDate             DateTime?
+  startTime           String?
+  endTime             String?
+  isAllDay            Boolean     @default(false)
+  registrationDeadline DateTime?
   
   // Location
-  venue         String?
-  address       String?
-  cityId        String?
-  mapUrl        String?
-  isOnline      Boolean     @default(false)
-  meetingLink   String?
+  venue               String?
+  address             String?
+  cityId              String?
+  mapUrl              String?
+  isOnline            Boolean     @default(false)
+  meetingLink         String?
+  latitude            Float?
+  longitude           Float?
   
-  // Media
-  coverImageUrl String?
+  // Categorization & Media
+  chapter             String?     @default("Ranchi")
+  category            String?     @default("General")
+  coverImageUrl       String?
   
-  // Status
-  status        EventStatus @default(DRAFT)
-  isPublic      Boolean     @default(true)
-  maxAttendees  Int?
+  // Status & Registration Rules
+  status              EventStatus @default(DRAFT)
+  isPublic            Boolean     @default(true)
+  maxAttendees        Int?
+  allowWaitlist       Boolean     @default(false)
+  registrationOpen    Boolean     @default(true)
+  
+  // Organizer Contact & SEO
+  contactName         String?
+  contactPhone        String?
+  shareImage          String?
+  shareDescription    String?
   
   // Admin
-  createdById   String
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdById         String
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   // Relations
-  city          City?       @relation(fields: [cityId], references: [id])
-  rsvps         EventRSVP[]
-  photos        EventPhoto[]
+  city                City?       @relation(fields: [cityId], references: [id])
+  rsvps               EventRSVP[]
+  photos              EventPhoto[]
 
   @@index([startDate])
   @@index([status])

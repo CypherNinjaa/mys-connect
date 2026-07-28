@@ -168,17 +168,52 @@ export class AdminController {
   }
 
   /**
+   * GET /api/v1/admin/events/kpis
+   * Get Event KPIs for Dashboard Cards
+   */
+  static async getEventKPIs(req: Request, res: Response, next: NextFunction) {
+    try {
+      const kpis = await AdminService.getEventKPIs();
+      res.json({ success: true, data: kpis });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/events/:id/duplicate
+   * Duplicate an event
+   */
+  static async duplicateEvent(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user?.id || 'admin';
+      const result = await AdminService.duplicateEvent(id, adminUserId);
+
+      res.status(201).json({
+        success: true,
+        message: 'Event duplicated successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/v1/admin/events
    * List events with pagination and filters
    */
   static async listEvents(req: Request, res: Response, next: NextFunction) {
     try {
-      const { page, limit, status, search } = req.query;
+      const { page, limit, status, chapter, category, search } = req.query;
       const result = await AdminService.listEvents({
         page: page ? parseInt(page as string, 10) : 1,
         limit: limit ? parseInt(limit as string, 10) : 20,
         status: status as EventStatus | undefined,
-        search: search as string,
+        chapter: chapter as string | undefined,
+        category: category as string | undefined,
+        search: search as string | undefined,
       });
 
       res.json({

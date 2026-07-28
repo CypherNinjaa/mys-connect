@@ -32,11 +32,13 @@ router.post('/members/bulk-role', AdminController.bulkUpdateMemberRole);
 
 // ─── Events ──────────────────────────────
 router.get('/events', AdminController.listEvents);
+router.get('/events/kpis', AdminController.getEventKPIs);
 router.post('/events', upload.single('coverImage'), AdminController.createEvent);
 router.put('/events/:id', upload.single('coverImage'), AdminController.updateEvent);
 router.post('/events/:id/publish', AdminController.publishEvent);
 router.post('/events/:id/unpublish', AdminController.unpublishEvent);
 router.post('/events/:id/cancel', AdminController.cancelEvent);
+router.post('/events/:id/duplicate', AdminController.duplicateEvent);
 router.delete('/events/:id', AdminController.deleteEvent);
 router.get('/events/:id/registrations', AdminController.getEventRegistrations);
 

@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { UserStatus, UserRole, EventStatus, NoticeType, NoticePriority } from '@prisma/client';
+import { UserStatus, UserRole, EventStatus, RSVPStatus, NoticeType, NoticePriority } from '@prisma/client';
 import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation, clerkClient } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
@@ -669,9 +669,51 @@ export class AdminService {
   // ═══════════════════════════════════════════════════════════
 
   /**
-   * List all events (including DRAFT) with pagination, status filter, search
+   * Get Event KPIs for Admin Dashboard
    */
-  static async listEvents(query: ListEventsQuery) {
+  static async getEventKPIs() {
+    const now = new Date();
+
+    const [
+      totalEvents,
+      upcomingEvents,
+      ongoingEvents,
+      completedEvents,
+      cancelledEvents,
+      draftEvents,
+      totalRegistrations,
+    ] = await Promise.all([
+      prisma.event.count(),
+      prisma.event.count({ where: { status: EventStatus.PUBLISHED, startDate: { gte: now } } }),
+      prisma.event.count({ where: { status: EventStatus.PUBLISHED, startDate: { lte: now }, endDate: { gte: now } } }),
+      prisma.event.count({ where: { OR: [{ status: EventStatus.COMPLETED }, { endDate: { lt: now } }] } }),
+      prisma.event.count({ where: { status: EventStatus.CANCELLED } }),
+      prisma.event.count({ where: { status: EventStatus.DRAFT } }),
+      prisma.eventRSVP.count({ where: { status: RSVPStatus.REGISTERED } }),
+    ]);
+
+    return {
+      totalEvents,
+      upcomingEvents,
+      ongoingEvents,
+      completedEvents,
+      cancelledEvents,
+      draftEvents,
+      totalRegistrations,
+    };
+  }
+
+  /**
+   * List events with advanced filters
+   */
+  static async listEvents(query: {
+    page?: number;
+    limit?: number;
+    status?: EventStatus;
+    chapter?: string;
+    category?: string;
+    search?: string;
+  }) {
     const page = Math.max(1, query.page || 1);
     const limit = Math.min(100, Math.max(1, query.limit || 20));
     const skip = (page - 1) * limit;
@@ -682,9 +724,21 @@ export class AdminService {
       where.status = query.status;
     }
 
+    if (query.chapter && query.chapter !== 'ALL') {
+      where.chapter = query.chapter;
+    }
+
+    if (query.category && query.category !== 'ALL') {
+      where.category = query.category;
+    }
+
     if (query.search) {
       const search = query.search.trim();
-      where.title = { contains: search, mode: 'insensitive' };
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { venue: { contains: search, mode: 'insensitive' } },
+        { chapter: { contains: search, mode: 'insensitive' } },
+      ];
     }
 
     const [total, events] = await Promise.all([
@@ -696,6 +750,7 @@ export class AdminService {
         orderBy: { createdAt: 'desc' },
         include: {
           city: true,
+          photos: true,
           _count: { select: { rsvps: true } },
         },
       }),
@@ -710,6 +765,68 @@ export class AdminService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Duplicate an event
+   */
+  static async duplicateEvent(id: string, adminUserId: string) {
+    const original = await prisma.event.findUnique({
+      where: { id },
+      include: { photos: true },
+    });
+
+    if (!original) {
+      throw new AppError('Original event not found', 404);
+    }
+
+    const newEvent = await prisma.event.create({
+      data: {
+        title: `${original.title} (Copy)`,
+        description: original.description,
+        shortDesc: original.shortDesc,
+        startDate: new Date(Date.now() + 7 * 86400000), // Default 7 days from now
+        endDate: original.endDate ? new Date(Date.now() + 7 * 86400000 + 7200000) : null,
+        startTime: original.startTime,
+        endTime: original.endTime,
+        isAllDay: original.isAllDay,
+        registrationDeadline: original.registrationDeadline,
+        venue: original.venue,
+        address: original.address,
+        cityId: original.cityId,
+        mapUrl: original.mapUrl,
+        isOnline: original.isOnline,
+        meetingLink: original.meetingLink,
+        latitude: original.latitude,
+        longitude: original.longitude,
+        chapter: original.chapter,
+        category: original.category,
+        coverImageUrl: original.coverImageUrl,
+        status: EventStatus.DRAFT,
+        isPublic: original.isPublic,
+        maxAttendees: original.maxAttendees,
+        allowWaitlist: original.allowWaitlist,
+        registrationOpen: original.registrationOpen,
+        contactName: original.contactName,
+        contactPhone: original.contactPhone,
+        shareImage: original.shareImage,
+        shareDescription: original.shareDescription,
+        createdById: adminUserId,
+      },
+      include: { city: true, _count: { select: { rsvps: true } } },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'EVENT_DUPLICATED',
+        entity: 'Event',
+        entityId: newEvent.id,
+        metadata: { originalId: id, newTitle: newEvent.title },
+      },
+    });
+
+    return newEvent;
   }
 
   /**

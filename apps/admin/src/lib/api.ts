@@ -96,6 +96,17 @@ export const bulkUpdateRole = (token: string, userIds: string[], role: string) =
 export const getEvents = (token: string, params?: URLSearchParams) =>
   apiFetch<ApiResponse<{ events: EventData[]; pagination: PaginationMeta }>>(`/admin/events${params ? `?${params}` : ''}`, { token });
 
+export const getEventKPIs = (token: string) =>
+  apiFetch<ApiResponse<{
+    totalEvents: number;
+    upcomingEvents: number;
+    ongoingEvents: number;
+    completedEvents: number;
+    cancelledEvents: number;
+    draftEvents: number;
+    totalRegistrations: number;
+  }>>('/admin/events/kpis', { token });
+
 export const createEvent = (token: string, data: FormData | Partial<EventData>) =>
   apiFetch<ApiResponse<EventData>>('/admin/events', {
     token,
@@ -118,6 +129,9 @@ export const unpublishEvent = (token: string, id: string) =>
 
 export const cancelEvent = (token: string, id: string) =>
   apiFetch<ApiResponse<EventData>>(`/admin/events/${id}/cancel`, { token, method: 'POST' });
+
+export const duplicateEvent = (token: string, id: string) =>
+  apiFetch<ApiResponse<EventData>>(`/admin/events/${id}/duplicate`, { token, method: 'POST' });
 
 export const deleteEvent = (token: string, id: string) =>
   apiFetch<ApiResponse<void>>(`/admin/events/${id}`, { token, method: 'DELETE' });
@@ -298,17 +312,37 @@ export interface EventData {
   id: string;
   title: string;
   description?: string;
+  shortDesc?: string;
   venue?: string;
   address?: string;
+  cityId?: string;
+  mapUrl?: string;
+  isOnline?: boolean;
+  meetingLink?: string;
+  latitude?: number;
+  longitude?: number;
+  chapter?: string;
+  category?: string;
   startDate: string;
   endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  isAllDay?: boolean;
+  registrationDeadline?: string;
   status: string;
   coverImageUrl?: string;
   maxCapacity?: number;
   maxAttendees?: number;
-  registrationDeadline?: string;
+  allowWaitlist?: boolean;
+  registrationOpen?: boolean;
   isPublished: boolean;
+  isPublic?: boolean;
+  contactName?: string;
+  contactPhone?: string;
+  shareImage?: string;
+  shareDescription?: string;
   createdAt: string;
+  photos?: Array<{ id: string; imageUrl: string; caption?: string }>;
   _count?: { rsvps: number };
 }
 
