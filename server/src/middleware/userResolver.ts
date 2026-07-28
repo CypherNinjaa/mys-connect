@@ -98,17 +98,35 @@ export const userResolver = async (
     }
 
     // 4. Check if any matching record by email is DEACTIVATED or REJECTED
-    if (clerkEmail) {
-      const deactivatedCheck = await prisma.user.findFirst({
-        where: {
-          OR: [{ clerkId }, { email: clerkEmail }],
-          status: { in: [UserStatus.DEACTIVATED, UserStatus.REJECTED] },
-        },
-      });
+    const deactivatedCheck = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { clerkId },
+          ...(clerkEmail ? [{ email: clerkEmail }] : []),
+        ],
+        status: { in: [UserStatus.DEACTIVATED, UserStatus.REJECTED] },
+      },
+    });
 
-      if (deactivatedCheck) {
-        throw new AppError('Your account has been deactivated or rejected by administration.', 403);
+    if (deactivatedCheck) {
+      let reasonNote: string | undefined =
+        claims?.public_metadata?.reasonNote || claims?.public_metadata?.statusReason;
+
+      if (!reasonNote) {
+        const latestAudit = await prisma.auditLog.findFirst({
+          where: {
+            entity: 'User',
+            entityId: deactivatedCheck.id,
+            action: { startsWith: 'USER_STATUS_CHANGE_' },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        reasonNote = (latestAudit?.metadata as any)?.reasonNote;
       }
+
+      const statusText = deactivatedCheck.status.toLowerCase();
+      const finalReason = reasonNote ? `Reason: ${reasonNote}` : 'Please contact support.';
+      throw new AppError(`Your account has been ${statusText}. ${finalReason}`, 403);
     }
 
     // 5. Role Sync (Only sync role if not deactivated)

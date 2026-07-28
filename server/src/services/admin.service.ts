@@ -223,8 +223,14 @@ export class AdminService {
         // Ban user in Clerk
         try {
           await banClerkUser(realClerkId);
-          await updateClerkUserMetadata(realClerkId, { status: newStatus, banned: true, approved: false });
-          logger.info(`Banned Clerk user account ${realClerkId} (${user.email})`);
+          await updateClerkUserMetadata(realClerkId, {
+            status: newStatus,
+            banned: true,
+            approved: false,
+            reasonNote: reasonNote || undefined,
+            statusReason: reasonNote || undefined,
+          });
+          logger.info(`Banned Clerk user account ${realClerkId} (${user.email}) with reason: ${reasonNote || 'N/A'}`);
         } catch (err) {
           logger.error(`Error syncing ban status to Clerk for ${realClerkId}:`, err);
         }
@@ -232,7 +238,13 @@ export class AdminService {
         // Unban user in Clerk
         try {
           await unbanClerkUser(realClerkId);
-          await updateClerkUserMetadata(realClerkId, { status: newStatus, banned: false, approved: true });
+          await updateClerkUserMetadata(realClerkId, {
+            status: newStatus,
+            banned: false,
+            approved: true,
+            reasonNote: undefined,
+            statusReason: undefined,
+          });
           logger.info(`Unbanned Clerk user account ${realClerkId} (${user.email})`);
         } catch (err) {
           logger.error(`Error syncing unban status to Clerk for ${realClerkId}:`, err);

@@ -1,13 +1,18 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useAuth } from '@clerk/expo';
+import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
 
 export default function DeactivatedScreen() {
   const { signOut } = useAuth();
+  const { user: clerkUser } = useUser();
   const router = useRouter();
+
+  const reason =
+    (clerkUser?.publicMetadata as any)?.statusReason ||
+    (clerkUser?.publicMetadata as any)?.reasonNote;
 
   const handleSignOut = async () => {
     await signOut();
@@ -24,11 +29,18 @@ export default function DeactivatedScreen() {
         <Text style={styles.title}>Account Inactive</Text>
         <Text style={styles.subtitle}>Access Suspended or Declined</Text>
 
-        <Text style={styles.description}>
-          Your member account for {APP.orgName} has been deactivated or rejected by the administration team.
-          {'\n\n'}
-          If you believe this is an error or would like to request reinstatement, please contact the executive committee.
-        </Text>
+        {reason ? (
+          <View style={styles.reasonBox}>
+            <Text style={styles.reasonLabel}>Reason given by Admin:</Text>
+            <Text style={styles.reasonText}>"{reason}"</Text>
+          </View>
+        ) : (
+          <Text style={styles.description}>
+            Your member account for {APP.orgName} has been deactivated or rejected by the administration team.
+            {'\n\n'}
+            If you believe this is an error or would like to request reinstatement, please contact the executive committee.
+          </Text>
+        )}
 
         <TouchableOpacity style={styles.primaryButton} onPress={handleSignOut}>
           <Text style={styles.primaryButtonText}>Sign Out & Return</Text>
@@ -82,6 +94,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: Spacing.xl,
+  },
+  reasonBox: {
+    width: '100%',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEB2B2',
+    borderRadius: Spacing.radiusMd,
+    padding: Spacing.md,
+    marginBottom: Spacing.xl,
+    alignItems: 'center',
+  },
+  reasonLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.error.dark,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  reasonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.error.main,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   primaryButton: {
     backgroundColor: Colors.error.dark,
