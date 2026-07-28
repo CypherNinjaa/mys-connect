@@ -9,16 +9,36 @@ export const clerkClient = createClerkClient({
 });
 
 /**
+ * Helper to check if clerkUserId is a synthetic/temporary seed ID or invitation ID
+ */
+function isSyntheticClerkId(clerkUserId: string): boolean {
+  return (
+    !clerkUserId ||
+    clerkUserId.startsWith('user_admin_') ||
+    clerkUserId.startsWith('inv_') ||
+    clerkUserId.startsWith('user_system_admin_seed')
+  );
+}
+
+/**
  * Ban a user in Clerk identity provider
  */
 export async function banClerkUser(clerkUserId: string): Promise<boolean> {
+  if (isSyntheticClerkId(clerkUserId)) {
+    logger.info(`Skipping Clerk ban for synthetic/invitation ID: ${clerkUserId}`);
+    return true;
+  }
   try {
     logger.info(`🚫 Banning Clerk user: ${clerkUserId}`);
     await clerkClient.users.banUser(clerkUserId);
     return true;
   } catch (error: any) {
+    if (error.status === 404 || error.errors?.[0]?.code === 'resource_not_found') {
+      logger.warn(`Clerk user ${clerkUserId} not found in Clerk provider (404), skipping ban.`);
+      return true;
+    }
     logger.error(`Failed to ban Clerk user ${clerkUserId}:`, error);
-    throw new Error(error.message || 'Failed to ban user in Clerk');
+    return false;
   }
 }
 
@@ -26,13 +46,21 @@ export async function banClerkUser(clerkUserId: string): Promise<boolean> {
  * Unban a user in Clerk identity provider
  */
 export async function unbanClerkUser(clerkUserId: string): Promise<boolean> {
+  if (isSyntheticClerkId(clerkUserId)) {
+    logger.info(`Skipping Clerk unban for synthetic/invitation ID: ${clerkUserId}`);
+    return true;
+  }
   try {
     logger.info(`✅ Unbanning Clerk user: ${clerkUserId}`);
     await clerkClient.users.unbanUser(clerkUserId);
     return true;
   } catch (error: any) {
+    if (error.status === 404 || error.errors?.[0]?.code === 'resource_not_found') {
+      logger.warn(`Clerk user ${clerkUserId} not found in Clerk provider (404), skipping unban.`);
+      return true;
+    }
     logger.error(`Failed to unban Clerk user ${clerkUserId}:`, error);
-    throw new Error(error.message || 'Failed to unban user in Clerk');
+    return false;
   }
 }
 
@@ -43,6 +71,10 @@ export async function updateClerkUserMetadata(
   clerkUserId: string,
   publicMetadata: Record<string, any>,
 ) {
+  if (isSyntheticClerkId(clerkUserId)) {
+    logger.info(`Skipping Clerk metadata update for synthetic/invitation ID: ${clerkUserId}`);
+    return;
+  }
   try {
     const user = await clerkClient.users.getUser(clerkUserId);
     await clerkClient.users.updateUser(clerkUserId, {
@@ -52,6 +84,10 @@ export async function updateClerkUserMetadata(
       },
     });
   } catch (error: any) {
+    if (error.status === 404 || error.errors?.[0]?.code === 'resource_not_found') {
+      logger.warn(`Clerk user ${clerkUserId} not found in Clerk provider (404), skipping metadata sync.`);
+      return;
+    }
     logger.error(`Failed to update Clerk metadata for ${clerkUserId}:`, error);
   }
 }
