@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createUser } from '@/lib/api';
-import { X, Upload, AlertCircle } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 
 interface CreateMemberModalProps {
   isOpen: boolean;
@@ -28,6 +28,8 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
     status: 'ACTIVE',
   });
 
+  const [validationError, setValidationError] = useState<string | null>(null);
+
   const mutation = useMutation({
     mutationFn: async () => {
       const token = await getToken();
@@ -38,6 +40,7 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
       queryClient.invalidateQueries({ queryKey: ['members'] });
       queryClient.invalidateQueries({ queryKey: ['member-stats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setValidationError(null);
       onClose();
       setForm({
         email: '',
@@ -56,6 +59,74 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+    if (validationError) setValidationError(null);
+  };
+
+  const validateAndSubmit = () => {
+    setValidationError(null);
+
+    // 1. Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!form.email || !emailRegex.test(form.email.trim())) {
+      setValidationError('Please enter a valid email address.');
+      return;
+    }
+    if (form.email.length > 150) {
+      setValidationError('Email must be under 150 characters.');
+      return;
+    }
+
+    // 2. First Name validation
+    const nameRegex = /^[a-zA-Z\s]+$/;
+    if (!form.firstName || form.firstName.trim().length < 2) {
+      setValidationError('First Name must be at least 2 characters.');
+      return;
+    }
+    if (!nameRegex.test(form.firstName.trim())) {
+      setValidationError('First Name must contain letters and spaces only.');
+      return;
+    }
+    if (form.firstName.length > 50) {
+      setValidationError('First Name must be under 50 characters.');
+      return;
+    }
+
+    // 3. Last Name validation
+    if (!form.lastName || form.lastName.trim().length < 2) {
+      setValidationError('Last Name must be at least 2 characters.');
+      return;
+    }
+    if (!nameRegex.test(form.lastName.trim())) {
+      setValidationError('Last Name must contain letters and spaces only.');
+      return;
+    }
+    if (form.lastName.length > 50) {
+      setValidationError('Last Name must be under 50 characters.');
+      return;
+    }
+
+    // 4. Phone validation (Indian Mobile number check if provided)
+    if (form.phone) {
+      const cleanPhone = form.phone.replace(/\D/g, '');
+      if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
+        setValidationError('Please enter a valid 10-digit Indian mobile number.');
+        return;
+      }
+    }
+
+    // 5. Occupation validation
+    if (form.occupation) {
+      if (form.occupation.length > 100) {
+        setValidationError('Occupation must be under 100 characters.');
+        return;
+      }
+      if (!/^[a-zA-Z\s/-]+$/.test(form.occupation.trim())) {
+        setValidationError('Occupation must contain letters, spaces, hyphens, or slashes only.');
+        return;
+      }
+    }
+
+    mutation.mutate();
   };
 
   return (
@@ -80,6 +151,7 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
             <input
               type="email"
               name="email"
+              maxLength={150}
               placeholder="member@example.com"
               value={form.email}
               onChange={handleChange}
@@ -93,6 +165,7 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
               <input
                 type="text"
                 name="firstName"
+                maxLength={50}
                 placeholder="First name"
                 value={form.firstName}
                 onChange={handleChange}
@@ -104,6 +177,7 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
               <input
                 type="text"
                 name="lastName"
+                maxLength={50}
                 placeholder="Last name"
                 value={form.lastName}
                 onChange={handleChange}
@@ -118,6 +192,7 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
               <input
                 type="tel"
                 name="phone"
+                maxLength={15}
                 placeholder="+91 9876543210"
                 value={form.phone}
                 onChange={handleChange}
@@ -129,6 +204,7 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
               <input
                 type="text"
                 name="occupation"
+                maxLength={100}
                 placeholder="Business / Engineer"
                 value={form.occupation}
                 onChange={handleChange}
@@ -167,6 +243,15 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
           </div>
         </div>
 
+        {validationError && (
+          <div className="flex items-start gap-2.5 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl animate-in fade-in slide-in-from-top-1 duration-200">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p>{validationError}</p>
+            </div>
+          </div>
+        )}
+
         {mutation.isError && (
           <div className="flex items-start gap-2.5 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -184,7 +269,7 @@ export function CreateMemberModal({ isOpen, onClose }: CreateMemberModalProps) {
             Cancel
           </button>
           <button
-            onClick={() => mutation.mutate()}
+            onClick={validateAndSubmit}
             disabled={!form.email || !form.firstName || !form.lastName || mutation.isPending}
             className="px-4 py-2 text-xs font-bold bg-[#7A0E16] text-white rounded-xl hover:bg-[#600018] disabled:opacity-50 transition-all shadow-sm"
           >
