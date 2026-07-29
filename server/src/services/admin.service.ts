@@ -3,6 +3,7 @@ import { UserStatus, UserRole, EventStatus, RSVPStatus, NoticeType, NoticePriori
 import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation, clerkClient } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
+import { NotificationService } from './notification.service';
 
 export interface ListUsersQuery {
   page?: number;
@@ -1239,7 +1240,7 @@ export class AdminService {
   }
 
   /**
-   * Publish a notice
+   * Publish a notice and send instant broadcast push notifications
    */
   static async publishNotice(id: string, adminUserId: string) {
     const notice = await prisma.notice.update({
@@ -1257,7 +1258,71 @@ export class AdminService {
       },
     });
 
+    // Broadcast instant push & in-app notification
+    void NotificationService.broadcastNoticeNotification(notice.id, notice.title, notice.content, {
+      type: notice.type,
+      priority: notice.priority,
+    });
+
     return notice;
+  }
+
+  /**
+   * Broadcast an existing published notice
+   */
+  static async broadcastNotice(id: string, adminUserId: string) {
+    const notice = await prisma.notice.findUnique({ where: { id } });
+    if (!notice) throw new AppError('Notice not found', 404);
+
+    if (!notice.isPublished) {
+      await prisma.notice.update({
+        where: { id },
+        data: { isPublished: true, publishedAt: new Date() },
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'NOTICE_BROADCASTED',
+        entity: 'Notice',
+        entityId: id,
+        metadata: { title: notice.title },
+      },
+    });
+
+    const result = await NotificationService.broadcastNoticeNotification(notice.id, notice.title, notice.content, {
+      type: notice.type,
+      priority: notice.priority,
+    });
+
+    return { notice, broadcastResult: result };
+  }
+
+  /**
+   * Get KPI statistics for Admin Notices page
+   */
+  static async getNoticeKPIs() {
+    const [totalNotices, emergencyNotices, eventNotices, generalNotices, publishedNotices, draftNotices, totalNotifications] =
+      await Promise.all([
+        prisma.notice.count(),
+        prisma.notice.count({ where: { type: NoticeType.IMPORTANT } }),
+        prisma.notice.count({ where: { type: NoticeType.CIRCULAR } }),
+        prisma.notice.count({ where: { type: NoticeType.GENERAL } }),
+        prisma.notice.count({ where: { isPublished: true } }),
+        prisma.notice.count({ where: { isPublished: false } }),
+        prisma.notification.count(),
+      ]);
+
+    return {
+      totalNotices,
+      emergencyNotices,
+      eventNotices,
+      generalNotices,
+      publishedNotices,
+      draftNotices,
+      totalNotifications,
+    };
   }
 
   /**

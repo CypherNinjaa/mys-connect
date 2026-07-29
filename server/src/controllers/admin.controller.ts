@@ -427,6 +427,42 @@ export class AdminController {
   }
 
   /**
+   * GET /api/v1/admin/notices/kpis
+   * Get notice KPI statistics
+   */
+  static async getNoticeKPIs(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await AdminService.getNoticeKPIs();
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/notices/:id/broadcast
+   * Broadcast a notice to all members via Expo Push Notification
+   */
+  static async broadcastNotice(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user?.id || 'admin';
+      const result = await AdminService.broadcastNotice(id, adminUserId);
+
+      res.json({
+        success: true,
+        message: 'Notice broadcasted successfully to all active members',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /api/v1/admin/notices/:id/publish
    * Publish a notice
    */

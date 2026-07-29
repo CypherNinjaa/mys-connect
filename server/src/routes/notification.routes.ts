@@ -12,5 +12,6 @@ router.get('/', NotificationController.getNotifications);
 router.get('/unread-count', NotificationController.getUnreadCount);
 router.patch('/read-all', NotificationController.markAllAsRead);
 router.patch('/:id/read', NotificationController.markAsRead);
+router.post('/push-token', NotificationController.registerPushToken);
 
 export { router as notificationRoutes };

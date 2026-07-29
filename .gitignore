@@ -64,3 +64,4 @@ server/prisma/migrations/**/migration_lock.toml
 *.mp4
 *.mov
 *.avi
+google-services.json

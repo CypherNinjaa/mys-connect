@@ -140,6 +140,17 @@ export const getEventRegistrations = (token: string, id: string) =>
   apiFetch<ApiResponse<unknown[]>>(`/admin/events/${id}/registrations`, { token });
 
 // Notices
+export const getNoticeKPIs = (token: string) =>
+  apiFetch<ApiResponse<{
+    totalNotices: number;
+    emergencyNotices: number;
+    eventNotices: number;
+    generalNotices: number;
+    publishedNotices: number;
+    draftNotices: number;
+    totalNotifications: number;
+  }>>('/admin/notices/kpis', { token });
+
 export const getNotices = (token: string, params?: URLSearchParams) =>
   apiFetch<ApiResponse<{ notices: NoticeData[]; pagination: PaginationMeta }>>(`/admin/notices${params ? `?${params}` : ''}`, { token });
 
@@ -162,6 +173,9 @@ export const publishNotice = (token: string, id: string) =>
 
 export const unpublishNotice = (token: string, id: string) =>
   apiFetch<ApiResponse<NoticeData>>(`/admin/notices/${id}/unpublish`, { token, method: 'POST' });
+
+export const broadcastNotice = (token: string, id: string) =>
+  apiFetch<ApiResponse<{ notice: NoticeData; broadcastResult: { count: number } }>>(`/admin/notices/${id}/broadcast`, { token, method: 'POST' });
 
 export const deleteNotice = (token: string, id: string) =>
   apiFetch<ApiResponse<void>>(`/admin/notices/${id}`, { token, method: 'DELETE' });
@@ -353,6 +367,8 @@ export interface NoticeData {
   type: string;
   priority: string;
   isPublished: boolean;
+  isPinned?: boolean;
+  imageUrl?: string;
   publishedAt?: string;
   expiresAt?: string;
   attachmentUrl?: string;
