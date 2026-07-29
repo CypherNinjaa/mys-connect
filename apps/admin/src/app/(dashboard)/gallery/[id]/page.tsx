@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
@@ -56,8 +56,12 @@ export default function AlbumDetailPage() {
   const [deleteTarget, setDeleteTarget] = useState<PhotoData | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
-  /** Local copy of the photo order while the admin is dragging tiles around. */
-  const [orderedPhotos, setOrderedPhotos] = useState<PhotoData[]>([]);
+  /**
+   * Photo ids in the order the admin dragged them into, or null to follow the
+   * server order. Storing only an override (never a mirror of server state)
+   * keeps a background refetch from clobbering an in-progress reorder.
+   */
+  const [orderOverride, setOrderOverride] = useState<string[] | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
@@ -73,11 +77,18 @@ export default function AlbumDetailPage() {
   const album: AlbumData | undefined = data?.data;
   const serverPhotos = useMemo(() => album?.photos ?? [], [album?.photos]);
 
-  // Adopt the server order whenever it changes; drag edits then live locally
-  // until the admin saves or discards them.
-  useEffect(() => {
-    setOrderedPhotos(serverPhotos);
-  }, [serverPhotos]);
+  /**
+   * Derived during render: apply the drag override when it still matches the
+   * server's photo set, otherwise fall back to the server order (photos were
+   * added or deleted underneath, so the stale override is dropped).
+   */
+  const orderedPhotos = useMemo(() => {
+    if (!orderOverride) return serverPhotos;
+    const byId = new Map(serverPhotos.map((p) => [p.id, p]));
+    if (orderOverride.length !== serverPhotos.length) return serverPhotos;
+    const next = orderOverride.map((id) => byId.get(id)).filter((p): p is PhotoData => Boolean(p));
+    return next.length === serverPhotos.length ? next : serverPhotos;
+  }, [orderOverride, serverPhotos]);
 
   const orderDirty = useMemo(
     () =>
@@ -125,7 +136,11 @@ export default function AlbumDetailPage() {
       if (!token) throw new Error('Not authenticated');
       return reorderAlbumPhotos(token, albumId, photoIds);
     },
-    onSuccess: invalidate,
+    // Drop the local override so the freshly saved server order takes over
+    onSuccess: () => {
+      setOrderOverride(null);
+      invalidate();
+    },
   });
 
   const deleteMutation = useMutation({
@@ -185,7 +200,7 @@ export default function AlbumDetailPage() {
     const next = [...orderedPhotos];
     const [moved] = next.splice(dragIndex, 1);
     next.splice(targetIndex, 0, moved);
-    setOrderedPhotos(next);
+    setOrderOverride(next.map((p) => p.id));
     setDragIndex(null);
     setDragOverIndex(null);
   };
@@ -360,7 +375,7 @@ export default function AlbumDetailPage() {
             {orderDirty && (
               <>
                 <button
-                  onClick={() => setOrderedPhotos(serverPhotos)}
+                  onClick={() => setOrderOverride(null)}
                   disabled={reorderMutation.isPending}
                   className="px-3 py-2 rounded-lg text-sm font-medium text-gray-600 border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                 >
@@ -504,7 +519,9 @@ export default function AlbumDetailPage() {
       )}
 
       {/* Modals */}
-      <AlbumFormModal isOpen={editOpen} album={album ?? null} onClose={() => setEditOpen(false)} />
+      {editOpen && (
+        <AlbumFormModal key={album?.id ?? 'new'} album={album ?? null} onClose={() => setEditOpen(false)} />
+      )}
 
       <PhotoLightbox
         photos={orderedPhotos}

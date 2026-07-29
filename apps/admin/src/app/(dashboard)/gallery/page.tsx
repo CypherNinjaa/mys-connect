@@ -439,7 +439,9 @@ export default function GalleryPage() {
         </div>
       )}
 
-      <AlbumFormModal isOpen={formOpen} album={editingAlbum} onClose={() => setFormOpen(false)} />
+      {formOpen && (
+        <AlbumFormModal key={editingAlbum?.id ?? 'new'} album={editingAlbum} onClose={() => setFormOpen(false)} />
+      )}
 
       <ConfirmDialog
         isOpen={Boolean(deleteTarget)}

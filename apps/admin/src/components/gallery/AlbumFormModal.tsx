@@ -14,7 +14,6 @@ import {
 import { ImagePlus, Loader2, Trash2, UploadCloud, X } from 'lucide-react';
 
 interface AlbumFormModalProps {
-  isOpen: boolean;
   /** null = create mode */
   album: AlbumData | null;
   onClose: () => void;
@@ -22,15 +21,19 @@ interface AlbumFormModalProps {
 
 const MAX_COVER_BYTES = 10 * 1024 * 1024; // matches the server's multer limit
 
-export function AlbumFormModal({ isOpen, album, onClose }: AlbumFormModalProps) {
+/**
+ * Mount only while the modal should be visible, keyed by album id — the caller
+ * remounting is what resets the form, so there is no state-mirroring effect here.
+ */
+export function AlbumFormModal({ album, onClose }: AlbumFormModalProps) {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<AlbumCategory>('EVENTS');
-  const [isPublished, setIsPublished] = useState(false);
+  const [title, setTitle] = useState(album?.title ?? '');
+  const [description, setDescription] = useState(album?.description ?? '');
+  const [category, setCategory] = useState<AlbumCategory>(album?.category ?? 'EVENTS');
+  const [isPublished, setIsPublished] = useState(album?.isPublished ?? false);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   /** true once the user clears an existing cover, so we send an explicit null */
@@ -40,26 +43,23 @@ export function AlbumFormModal({ isOpen, album, onClose }: AlbumFormModalProps) 
 
   const isEdit = Boolean(album);
 
-  // Reset the form whenever the modal opens or switches album
-  useEffect(() => {
-    if (!isOpen) return;
-    setTitle(album?.title ?? '');
-    setDescription(album?.description ?? '');
-    setCategory(album?.category ?? 'EVENTS');
-    setIsPublished(album?.isPublished ?? false);
-    setCoverFile(null);
-    setCoverPreview(null);
-    setCoverCleared(false);
-    setFormError(null);
-  }, [isOpen, album]);
-
-  // Object URLs must be revoked or the blob leaks for the tab's lifetime
-  useEffect(() => {
-    if (!coverFile) return;
-    const url = URL.createObjectURL(coverFile);
+  /**
+   * Object URLs must be revoked or the blob leaks for the tab's lifetime. The
+   * URL is created in the event handler that picks the file, so the ref holds
+   * whatever is currently live and both the swap and unmount can free it.
+   */
+  const previewUrlRef = useRef<string | null>(null);
+  const swapPreview = (url: string | null) => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = url;
     setCoverPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [coverFile]);
+  };
+  useEffect(
+    () => () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    },
+    [],
+  );
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -94,8 +94,6 @@ export function AlbumFormModal({ isOpen, album, onClose }: AlbumFormModalProps) 
     },
   });
 
-  if (!isOpen) return null;
-
   const acceptFile = (file: File | undefined) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -108,6 +106,7 @@ export function AlbumFormModal({ isOpen, album, onClose }: AlbumFormModalProps) 
     }
     setFormError(null);
     setCoverFile(file);
+    swapPreview(URL.createObjectURL(file));
     setCoverCleared(false);
   };
 
@@ -225,7 +224,7 @@ export function AlbumFormModal({ isOpen, album, onClose }: AlbumFormModalProps) 
                     type="button"
                     onClick={() => {
                       setCoverFile(null);
-                      setCoverPreview(null);
+                      swapPreview(null);
                       setCoverCleared(true);
                     }}
                     className="px-3 py-1.5 rounded-lg bg-white text-xs font-semibold text-red-600 shadow flex items-center gap-1.5"

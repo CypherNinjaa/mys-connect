@@ -34,11 +34,15 @@ export function PhotoLightbox({
   const [caption, setCaption] = useState('');
   const [savingCaption, setSavingCaption] = useState(false);
   const [captionSaved, setCaptionSaved] = useState(false);
+  const [editingPhotoId, setEditingPhotoId] = useState<string | null>(null);
 
-  useEffect(() => {
-    setCaption(photo?.caption ?? '');
+  // Reset the draft during render (not in an effect) whenever the viewer moves
+  // to a different photo, so the input never shows the previous photo's caption.
+  if (photo && photo.id !== editingPhotoId) {
+    setEditingPhotoId(photo.id);
+    setCaption(photo.caption ?? '');
     setCaptionSaved(false);
-  }, [photo?.id, photo?.caption]);
+  }
 
   const goNext = useCallback(() => {
     if (index === null || photos.length === 0) return;
