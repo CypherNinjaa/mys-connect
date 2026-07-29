@@ -1,4 +1,4 @@
-import { PrismaClient, EventStatus } from '@prisma/client';
+import { PrismaClient, EventStatus, AlbumCategory } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -230,6 +230,7 @@ async function main() {
   const galleryAlbums = [
     {
       title: 'Mahesh Navami Mahotsav Celebrations',
+      category: AlbumCategory.CELEBRATIONS,
       description: 'Grand cultural celebration photos, deep daan, and aarti.',
       coverImageUrl: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=800&q=80',
       isPublished: true,
@@ -247,6 +248,7 @@ async function main() {
     },
     {
       title: 'Annual Executive Committee Meeting',
+      category: AlbumCategory.EVENTS,
       description: 'Executive committee annual conference and lamp lighting.',
       coverImageUrl: 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=800&q=80',
       isPublished: true,
@@ -264,6 +266,7 @@ async function main() {
     },
     {
       title: 'Blood Donation Camp Ranchi',
+      category: AlbumCategory.OTHERS,
       description: 'Community members participating in voluntary blood donation.',
       coverImageUrl: 'https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&w=800&q=80',
       isPublished: true,
@@ -281,6 +284,7 @@ async function main() {
     },
     {
       title: 'Diwali Cultural Night & Sneh Milan',
+      category: AlbumCategory.CELEBRATIONS,
       description: 'Festive cultural performances, traditional feast, and music.',
       coverImageUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=800&q=80',
       isPublished: true,
@@ -304,6 +308,7 @@ async function main() {
         where: { id: existing.id },
         data: {
           description: albumData.description,
+          category: albumData.category,
           coverImageUrl: albumData.coverImageUrl,
           isPublished: true,
         },
@@ -313,6 +318,7 @@ async function main() {
         data: {
           title: albumData.title,
           description: albumData.description,
+          category: albumData.category,
           coverImageUrl: albumData.coverImageUrl,
           isPublished: true,
           createdById: adminUser.id,

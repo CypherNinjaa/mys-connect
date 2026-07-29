@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { UserStatus, UserRole, EventStatus, RSVPStatus, NoticeType, NoticePriority, Prisma } from '@prisma/client';
+import { UserStatus, UserRole, EventStatus, RSVPStatus, NoticeType, NoticePriority, AlbumCategory, Prisma } from '@prisma/client';
 import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation, clerkClient } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
@@ -37,6 +37,8 @@ export interface ListAlbumsQuery {
   page?: number;
   limit?: number;
   search?: string;
+  category?: string;
+  isPublished?: boolean;
 }
 
 export interface ListAuditLogsQuery {
@@ -44,6 +46,8 @@ export interface ListAuditLogsQuery {
   limit?: number;
   entity?: string;
   userId?: string;
+  action?: string;
+  search?: string;
   startDate?: string;
   endDate?: string;
 }
@@ -1454,28 +1458,63 @@ export class AdminService {
     const limit = Math.min(100, Math.max(1, query.limit || 20));
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AlbumWhereInput = {};
 
     if (query.search) {
       const search = query.search.trim();
-      where.title = { contains: search, mode: 'insensitive' };
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
     }
 
-    const [total, albums] = await Promise.all([
+    const category = normalizeAlbumCategory(query.category);
+    if (category) {
+      where.category = category;
+    }
+
+    if (typeof query.isPublished === 'boolean') {
+      where.isPublished = query.isPublished;
+    }
+
+    const [total, albums, stats, photoTotal] = await Promise.all([
       prisma.album.count({ where }),
       prisma.album.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
         include: {
           _count: { select: { photos: true } },
+          // First photo doubles as a cover fallback when none is set explicitly
+          photos: {
+            orderBy: { sortOrder: 'asc' },
+            take: 1,
+            select: { imageUrl: true, thumbnailUrl: true },
+          },
         },
       }),
+      // Unfiltered totals so the KPI cards stay stable while filters change
+      prisma.album.groupBy({ by: ['isPublished'], _count: { _all: true } }),
+      prisma.albumPhoto.count(),
     ]);
 
+    const publishedCount = stats.find((s) => s.isPublished)?._count._all ?? 0;
+    const draftCount = stats.find((s) => !s.isPublished)?._count._all ?? 0;
+
     return {
-      albums,
+      albums: albums.map(({ photos, ...album }) => ({
+        ...album,
+        // Never make the client guess which field to fall back to
+        coverImageUrl: album.coverImageUrl || photos[0]?.imageUrl || null,
+        hasExplicitCover: Boolean(album.coverImageUrl),
+      })),
+      stats: {
+        totalAlbums: publishedCount + draftCount,
+        publishedAlbums: publishedCount,
+        draftAlbums: draftCount,
+        totalPhotos: photoTotal,
+      },
       pagination: {
         page,
         limit,
@@ -1486,22 +1525,48 @@ export class AdminService {
   }
 
   /**
+   * Get a single album with all its photos, ordered for the photo manager
+   */
+  static async getAlbumById(id: string) {
+    const album = await prisma.album.findUnique({
+      where: { id },
+      include: {
+        photos: { orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] },
+        _count: { select: { photos: true } },
+      },
+    });
+
+    if (!album) {
+      throw new AppError('Album not found', 404);
+    }
+
+    return album;
+  }
+
+  /**
    * Create a new album
    */
   static async createAlbum(
     data: {
       title: string;
       description?: string;
+      category?: string;
       coverImageUrl?: string;
       isPublished?: boolean;
     },
     adminUserId: string,
   ) {
+    const title = data.title?.trim();
+    if (!title) {
+      throw new AppError('Album title is required', 400);
+    }
+
     const album = await prisma.album.create({
       data: {
-        title: data.title,
-        description: data.description,
-        coverImageUrl: data.coverImageUrl,
+        title,
+        description: data.description?.trim() || null,
+        category: normalizeAlbumCategory(data.category) ?? AlbumCategory.EVENTS,
+        coverImageUrl: data.coverImageUrl || null,
         isPublished: data.isPublished ?? false,
         createdById: adminUserId,
       },
@@ -1514,7 +1579,7 @@ export class AdminService {
         action: 'ALBUM_CREATED',
         entity: 'Album',
         entityId: album.id,
-        metadata: { title: album.title },
+        metadata: { title: album.title, category: album.category },
       },
     });
 
@@ -1528,25 +1593,70 @@ export class AdminService {
     id: string,
     data: {
       title?: string;
-      description?: string;
-      coverImageUrl?: string;
+      description?: string | null;
+      category?: string;
+      coverImageUrl?: string | null;
       isPublished?: boolean;
+      sortOrder?: number;
     },
     adminUserId: string,
   ) {
+    const existing = await prisma.album.findUnique({ where: { id } });
+    if (!existing) {
+      throw new AppError('Album not found', 404);
+    }
+
+    // Build the update explicitly — never spread unvalidated client input into Prisma
+    const updateData: Prisma.AlbumUpdateInput = {};
+
+    if (data.title !== undefined) {
+      const title = data.title.trim();
+      if (!title) throw new AppError('Album title cannot be empty', 400);
+      updateData.title = title;
+    }
+    if (data.description !== undefined) {
+      updateData.description = data.description?.trim() || null;
+    }
+    if (data.category !== undefined) {
+      const category = normalizeAlbumCategory(data.category);
+      if (!category) throw new AppError('Invalid album category', 400);
+      updateData.category = category;
+    }
+    if (data.coverImageUrl !== undefined) {
+      updateData.coverImageUrl = data.coverImageUrl || null;
+    }
+    if (data.isPublished !== undefined) {
+      updateData.isPublished = data.isPublished;
+    }
+    if (data.sortOrder !== undefined) {
+      updateData.sortOrder = data.sortOrder;
+    }
+
     const album = await prisma.album.update({
       where: { id },
-      data,
+      data: updateData,
       include: { _count: { select: { photos: true } } },
     });
+
+    // A publish flip is the interesting event for an audit trail, so name it as one
+    const publishChanged =
+      data.isPublished !== undefined && data.isPublished !== existing.isPublished;
+    const action = publishChanged
+      ? album.isPublished
+        ? 'ALBUM_PUBLISHED'
+        : 'ALBUM_UNPUBLISHED'
+      : 'ALBUM_UPDATED';
 
     await prisma.auditLog.create({
       data: {
         userId: adminUserId,
-        action: 'ALBUM_UPDATED',
+        action,
         entity: 'Album',
         entityId: id,
-        metadata: { title: album.title },
+        metadata: {
+          title: album.title,
+          fields: Object.keys(updateData),
+        },
       },
     });
 
@@ -1580,11 +1690,12 @@ export class AdminService {
   }
 
   /**
-   * Add photos to an album
+   * Add photos to an album. New photos are appended after existing ones so an
+   * upload never reshuffles the order the admin already arranged.
    */
   static async addPhotosToAlbum(
     albumId: string,
-    photos: { imageUrl: string; thumbnailUrl?: string; caption?: string; sortOrder?: number }[],
+    photos: { imageUrl: string; thumbnailUrl?: string; caption?: string }[],
     adminUserId: string,
   ) {
     const album = await prisma.album.findUnique({ where: { id: albumId } });
@@ -1593,15 +1704,33 @@ export class AdminService {
       throw new AppError('Album not found', 404);
     }
 
+    if (photos.length === 0) {
+      throw new AppError('No photos were uploaded', 400);
+    }
+
+    const last = await prisma.albumPhoto.aggregate({
+      where: { albumId },
+      _max: { sortOrder: true },
+    });
+    const startOrder = (last._max.sortOrder ?? -1) + 1;
+
     const created = await prisma.albumPhoto.createMany({
-      data: photos.map((photo) => ({
+      data: photos.map((photo, index) => ({
         albumId,
         imageUrl: photo.imageUrl,
         thumbnailUrl: photo.thumbnailUrl,
         caption: photo.caption,
-        sortOrder: photo.sortOrder ?? 0,
+        sortOrder: startOrder + index,
       })),
     });
+
+    // An album with photos but no cover looks broken in both clients — adopt the first upload
+    if (!album.coverImageUrl && photos[0]) {
+      await prisma.album.update({
+        where: { id: albumId },
+        data: { coverImageUrl: photos[0].imageUrl },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -1617,6 +1746,111 @@ export class AdminService {
   }
 
   /**
+   * Update a single photo's caption
+   */
+  static async updatePhoto(
+    photoId: string,
+    data: { caption?: string | null },
+    adminUserId: string,
+  ) {
+    const photo = await prisma.albumPhoto.findUnique({ where: { id: photoId } });
+
+    if (!photo) {
+      throw new AppError('Photo not found', 404);
+    }
+
+    const updated = await prisma.albumPhoto.update({
+      where: { id: photoId },
+      data: { caption: data.caption?.trim() || null },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'PHOTO_UPDATED',
+        entity: 'AlbumPhoto',
+        entityId: photoId,
+        metadata: { albumId: photo.albumId, caption: updated.caption },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Persist a new photo order for an album. Takes the full list of photo ids in
+   * their intended order and writes sortOrder to match.
+   */
+  static async reorderAlbumPhotos(albumId: string, photoIds: string[], adminUserId: string) {
+    const album = await prisma.album.findUnique({
+      where: { id: albumId },
+      select: { id: true, title: true },
+    });
+
+    if (!album) {
+      throw new AppError('Album not found', 404);
+    }
+
+    const existing = await prisma.albumPhoto.findMany({
+      where: { albumId },
+      select: { id: true },
+    });
+    const existingIds = new Set(existing.map((p) => p.id));
+
+    // Reject partial or foreign lists rather than silently corrupting the order
+    if (photoIds.length !== existingIds.size || photoIds.some((id) => !existingIds.has(id))) {
+      throw new AppError('Photo order must list every photo in this album exactly once', 400);
+    }
+
+    await prisma.$transaction(
+      photoIds.map((id, index) =>
+        prisma.albumPhoto.update({ where: { id }, data: { sortOrder: index } }),
+      ),
+    );
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'ALBUM_PHOTOS_REORDERED',
+        entity: 'Album',
+        entityId: albumId,
+        metadata: { albumTitle: album.title, photoCount: photoIds.length },
+      },
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Promote an existing album photo to be the album cover
+   */
+  static async setAlbumCover(albumId: string, photoId: string, adminUserId: string) {
+    const photo = await prisma.albumPhoto.findUnique({ where: { id: photoId } });
+
+    if (!photo || photo.albumId !== albumId) {
+      throw new AppError('Photo not found in this album', 404);
+    }
+
+    const album = await prisma.album.update({
+      where: { id: albumId },
+      data: { coverImageUrl: photo.imageUrl },
+      include: { _count: { select: { photos: true } } },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'ALBUM_COVER_CHANGED',
+        entity: 'Album',
+        entityId: albumId,
+        metadata: { albumTitle: album.title, photoId },
+      },
+    });
+
+    return album;
+  }
+
+  /**
    * Delete a single photo
    */
   static async deletePhoto(photoId: string, adminUserId: string) {
@@ -1627,6 +1861,25 @@ export class AdminService {
     }
 
     await prisma.albumPhoto.delete({ where: { id: photoId } });
+
+    // Leaving a cover pointing at a deleted photo would show a broken image
+    const album = await prisma.album.findUnique({
+      where: { id: photo.albumId },
+      select: { coverImageUrl: true },
+    });
+
+    if (album?.coverImageUrl === photo.imageUrl) {
+      const replacement = await prisma.albumPhoto.findFirst({
+        where: { albumId: photo.albumId },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { imageUrl: true },
+      });
+
+      await prisma.album.update({
+        where: { id: photo.albumId },
+        data: { coverImageUrl: replacement?.imageUrl ?? null },
+      });
+    }
 
     await prisma.auditLog.create({
       data: {
@@ -1641,19 +1894,76 @@ export class AdminService {
     return { success: true };
   }
 
+  /**
+   * Delete several photos from one album in a single request
+   */
+  static async deletePhotos(photoIds: string[], adminUserId: string) {
+    if (photoIds.length === 0) {
+      throw new AppError('No photos selected', 400);
+    }
+
+    const photos = await prisma.albumPhoto.findMany({
+      where: { id: { in: photoIds } },
+      select: { id: true, albumId: true, imageUrl: true },
+    });
+
+    if (photos.length === 0) {
+      throw new AppError('No matching photos found', 404);
+    }
+
+    await prisma.albumPhoto.deleteMany({ where: { id: { in: photos.map((p) => p.id) } } });
+
+    // Repair any album cover that pointed at one of the deleted photos
+    const deletedUrls = new Set(photos.map((p) => p.imageUrl));
+    const albumIds = Array.from(new Set(photos.map((p) => p.albumId)));
+
+    for (const albumId of albumIds) {
+      const album = await prisma.album.findUnique({
+        where: { id: albumId },
+        select: { coverImageUrl: true },
+      });
+
+      if (!album?.coverImageUrl || !deletedUrls.has(album.coverImageUrl)) continue;
+
+      const replacement = await prisma.albumPhoto.findFirst({
+        where: { albumId },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { imageUrl: true },
+      });
+
+      await prisma.album.update({
+        where: { id: albumId },
+        data: { coverImageUrl: replacement?.imageUrl ?? null },
+      });
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'PHOTOS_DELETED',
+        entity: 'AlbumPhoto',
+        metadata: { photoCount: photos.length, albumIds },
+      },
+    });
+
+    return { success: true, count: photos.length };
+  }
+
   // ═══════════════════════════════════════════════════════════
   // AUDIT LOGS
   // ═══════════════════════════════════════════════════════════
 
   /**
-   * List audit logs with pagination, entity filter, userId filter, date range
+   * List audit logs with pagination and entity/user/action/date/search filters.
+   * Also returns the distinct entity and action values present in the table so
+   * the admin filter dropdowns can be built from real data instead of a hardcoded list.
    */
   static async listAuditLogs(query: ListAuditLogsQuery) {
     const page = Math.max(1, query.page || 1);
     const limit = Math.min(100, Math.max(1, query.limit || 20));
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.AuditLogWhereInput = {};
 
     if (query.entity) {
       where.entity = query.entity;
@@ -1663,17 +1973,51 @@ export class AdminService {
       where.userId = query.userId;
     }
 
-    if (query.startDate || query.endDate) {
-      where.createdAt = {};
-      if (query.startDate) {
-        where.createdAt.gte = new Date(query.startDate);
-      }
-      if (query.endDate) {
-        where.createdAt.lte = new Date(query.endDate);
-      }
+    if (query.action) {
+      where.action = query.action;
     }
 
-    const [total, logs] = await Promise.all([
+    if (query.startDate || query.endDate) {
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (query.startDate) {
+        createdAt.gte = new Date(query.startDate);
+      }
+      if (query.endDate) {
+        // Callers pass a plain date; include the whole day rather than just midnight
+        const end = new Date(query.endDate);
+        if (!query.endDate.includes('T')) {
+          end.setHours(23, 59, 59, 999);
+        }
+        createdAt.lte = end;
+      }
+      where.createdAt = createdAt;
+    }
+
+    // Free-text search spans the action/entity columns plus the acting user,
+    // so resolve matching user ids first.
+    const search = query.search?.trim();
+    if (search) {
+      const matchingUsers = await prisma.user.findMany({
+        where: {
+          OR: [
+            { fullName: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      where.OR = [
+        { action: { contains: search, mode: 'insensitive' } },
+        { entity: { contains: search, mode: 'insensitive' } },
+        { entityId: { contains: search, mode: 'insensitive' } },
+        ...(matchingUsers.length > 0
+          ? [{ userId: { in: matchingUsers.map((u) => u.id) } }]
+          : []),
+      ];
+    }
+
+    const [total, logs, entityGroups, actionGroups] = await Promise.all([
       prisma.auditLog.count({ where }),
       prisma.auditLog.findMany({
         where,
@@ -1681,13 +2025,15 @@ export class AdminService {
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
+      prisma.auditLog.groupBy({ by: ['entity'], _count: { _all: true } }),
+      prisma.auditLog.groupBy({ by: ['action'], _count: { _all: true } }),
     ]);
 
     // Attach user info (email, fullName) since AuditLog has no relation to User
     const userIds = Array.from(new Set(logs.map((log) => log.userId)));
     const users = await prisma.user.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, email: true, fullName: true },
+      select: { id: true, email: true, fullName: true, role: true, avatarUrl: true },
     });
     const userMap = new Map(users.map((u) => [u.id, u]));
 
@@ -1698,6 +2044,14 @@ export class AdminService {
 
     return {
       logs: logsWithUser,
+      filters: {
+        entities: entityGroups
+          .map((g) => ({ value: g.entity, count: g._count._all }))
+          .sort((a, b) => a.value.localeCompare(b.value)),
+        actions: actionGroups
+          .map((g) => ({ value: g.action, count: g._count._all }))
+          .sort((a, b) => a.value.localeCompare(b.value)),
+      },
       pagination: {
         page,
         limit,
@@ -1731,18 +2085,52 @@ export class AdminService {
   }
 
   /**
-   * Update multiple app settings at once
+   * Update multiple app settings at once.
+   * Values are validated against each setting's declared type, and only rows
+   * whose value actually changed are written (so the audit entry stays meaningful).
    */
   static async updateSettings(
-    settings: { key: string; value: string }[],
+    settings: { key: string; value: string; type?: string; group?: string }[],
     adminUserId: string,
   ) {
-    const results = await Promise.all(
-      settings.map((s) =>
+    if (!Array.isArray(settings) || settings.length === 0) {
+      throw new AppError('No settings supplied', 400);
+    }
+
+    const existing = await prisma.appSetting.findMany({
+      where: { key: { in: settings.map((s) => s.key) } },
+    });
+    const existingByKey = new Map(existing.map((s) => [s.key, s]));
+
+    const changed: { key: string; value: string; type: string; group: string }[] = [];
+
+    for (const setting of settings) {
+      const current = existingByKey.get(setting.key);
+      const type = current?.type || setting.type || 'string';
+
+      validateSettingValue(setting.key, setting.value, type);
+
+      if (current && current.value === setting.value) continue;
+
+      changed.push({
+        key: setting.key,
+        value: setting.value,
+        type,
+        group: current?.group || setting.group || 'general',
+      });
+    }
+
+    if (changed.length === 0) {
+      // Nothing to do — return current state without writing an audit entry
+      return existing;
+    }
+
+    const results = await prisma.$transaction(
+      changed.map((s) =>
         prisma.appSetting.upsert({
           where: { key: s.key },
           update: { value: s.value },
-          create: { key: s.key, value: s.value },
+          create: { key: s.key, value: s.value, type: s.type, group: s.group },
         }),
       ),
     );
@@ -1752,10 +2140,57 @@ export class AdminService {
         userId: adminUserId,
         action: 'SETTINGS_UPDATED',
         entity: 'AppSetting',
-        metadata: { keys: settings.map((s) => s.key) },
+        metadata: {
+          keys: changed.map((s) => s.key),
+          changes: changed.map((s) => ({
+            key: s.key,
+            from: existingByKey.get(s.key)?.value ?? null,
+            to: s.value,
+          })),
+        },
       },
     });
 
     return results;
+  }
+}
+
+/** Map a loose category string onto the AlbumCategory enum, or null when absent/invalid. */
+function normalizeAlbumCategory(value?: string | null): AlbumCategory | null {
+  if (!value) return null;
+  const upper = String(value).trim().toUpperCase();
+  if (!upper || upper === 'ALL') return null;
+  return upper in AlbumCategory ? AlbumCategory[upper as keyof typeof AlbumCategory] : null;
+}
+
+/** Reject values that don't match the setting's declared type before they reach the DB. */
+function validateSettingValue(key: string, value: string, type: string) {
+  if (typeof value !== 'string') {
+    throw new AppError(`Setting "${key}" must be sent as a string`, 400);
+  }
+
+  switch (type) {
+    case 'boolean':
+      if (value !== 'true' && value !== 'false') {
+        throw new AppError(`Setting "${key}" must be "true" or "false"`, 400);
+      }
+      break;
+
+    case 'number':
+      if (value.trim() === '' || !Number.isFinite(Number(value))) {
+        throw new AppError(`Setting "${key}" must be a number`, 400);
+      }
+      break;
+
+    case 'json':
+      try {
+        JSON.parse(value);
+      } catch {
+        throw new AppError(`Setting "${key}" must be valid JSON`, 400);
+      }
+      break;
+
+    default:
+      break;
   }
 }

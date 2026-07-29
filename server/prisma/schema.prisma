@@ -89,6 +89,14 @@ enum NotificationStatus {
   FAILED
 }
 
+/// Album categories — these map 1:1 to the mobile gallery's tab bar,
+/// so adding a value here also requires a new tab in the mobile app.
+enum AlbumCategory {
+  EVENTS
+  CELEBRATIONS
+  OTHERS
+}
+
 // ═══════════════════════════════════════════════════════════
 // MODELS
 // ═══════════════════════════════════════════════════════════
@@ -318,22 +326,24 @@ model NoticeRead {
 
 /// Photo album — admin-curated galleries
 model Album {
-  id            String       @id @default(cuid())
+  id            String        @id @default(cuid())
   title         String
   description   String?
+  category      AlbumCategory @default(EVENTS)
   coverImageUrl String?
-  isPublished   Boolean      @default(false)
-  sortOrder     Int          @default(0)
-  
+  isPublished   Boolean       @default(false)
+  sortOrder     Int           @default(0)
+
   // Admin
   createdById   String
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   // Relations
   photos        AlbumPhoto[]
 
   @@index([isPublished])
+  @@index([category])
   @@map("albums")
 }
 

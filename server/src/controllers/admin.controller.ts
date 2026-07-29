@@ -537,11 +537,16 @@ export class AdminController {
    */
   static async listAlbums(req: Request, res: Response, next: NextFunction) {
     try {
-      const { page, limit, search } = req.query;
+      const { page, limit, search, category, isPublished } = req.query;
       const result = await AdminService.listAlbums({
         page: page ? parseInt(page as string, 10) : 1,
         limit: limit ? parseInt(limit as string, 10) : 20,
         search: search as string,
+        category: category as string,
+        isPublished:
+          isPublished === undefined || isPublished === '' || isPublished === 'all'
+            ? undefined
+            : String(isPublished) === 'true',
       });
 
       res.json({
@@ -554,13 +559,37 @@ export class AdminController {
   }
 
   /**
+   * GET /api/v1/admin/gallery/albums/:id
+   * Get a single album with all its photos
+   */
+  static async getAlbumById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const result = await AdminService.getAlbumById(id);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /api/v1/admin/albums
-   * Create a new album
+   * Create a new album — accepts an optional `coverImage` file upload
    */
   static async createAlbum(req: Request, res: Response, next: NextFunction) {
     try {
       const adminUserId = req.user?.id || 'admin';
-      const result = await AdminService.createAlbum(req.body, adminUserId);
+      const data = normalizeAlbumPayload(req.body);
+
+      if (req.file) {
+        data.coverImageUrl = await uploadToCloudinary(req.file.buffer, 'mys-connect/albums');
+      }
+
+      const result = await AdminService.createAlbum(data, adminUserId);
 
       res.status(201).json({
         success: true,
@@ -573,13 +602,19 @@ export class AdminController {
 
   /**
    * PUT /api/v1/admin/albums/:id
-   * Update an album
+   * Update an album — accepts an optional `coverImage` file upload
    */
   static async updateAlbum(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);
       const adminUserId = req.user?.id || 'admin';
-      const result = await AdminService.updateAlbum(id, req.body, adminUserId);
+      const data = normalizeAlbumPayload(req.body);
+
+      if (req.file) {
+        data.coverImageUrl = await uploadToCloudinary(req.file.buffer, 'mys-connect/albums');
+      }
+
+      const result = await AdminService.updateAlbum(id, data, adminUserId);
 
       res.json({
         success: true,
@@ -616,16 +651,122 @@ export class AdminController {
   static async uploadPhotos(req: Request, res: Response, next: NextFunction) {
     try {
       const albumId = String(req.params.albumId || req.params.id);
-      const files = req.files as Express.Multer.File[];
+      const files = (req.files as Express.Multer.File[]) || [];
       const adminUserId = req.user?.id || 'admin';
 
-      const uploadedPhotos: { imageUrl: string; sortOrder: number }[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const url = await uploadToCloudinary(files[i].buffer, 'mys-connect/gallery');
-        uploadedPhotos.push({ imageUrl: url, sortOrder: i });
+      if (files.length === 0) {
+        res.status(400).json({ success: false, message: 'No photos were uploaded' });
+        return;
+      }
+
+      const uploadedPhotos: { imageUrl: string; caption?: string }[] = [];
+      for (const file of files) {
+        const url = await uploadToCloudinary(file.buffer, 'mys-connect/gallery');
+        uploadedPhotos.push({ imageUrl: url });
       }
 
       const result = await AdminService.addPhotosToAlbum(albumId, uploadedPhotos, adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PATCH /api/v1/admin/gallery/photos/:id
+   * Update a photo's caption
+   */
+  static async updatePhoto(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user?.id || 'admin';
+      const caption = req.body?.caption;
+      const result = await AdminService.updatePhoto(
+        id,
+        { caption: caption === undefined ? undefined : caption || null },
+        adminUserId,
+      );
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/gallery/albums/:id/photos/reorder
+   * Persist a new photo order — body must list every photo id in the album
+   */
+  static async reorderAlbumPhotos(req: Request, res: Response, next: NextFunction) {
+    try {
+      const albumId = String(req.params.id);
+      const adminUserId = req.user?.id || 'admin';
+      const photoIds = req.body?.photoIds;
+
+      if (!Array.isArray(photoIds)) {
+        res.status(400).json({ success: false, message: 'photoIds must be an array' });
+        return;
+      }
+
+      const result = await AdminService.reorderAlbumPhotos(albumId, photoIds.map(String), adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/gallery/albums/:id/cover
+   * Promote one of the album's photos to be its cover
+   */
+  static async setAlbumCover(req: Request, res: Response, next: NextFunction) {
+    try {
+      const albumId = String(req.params.id);
+      const adminUserId = req.user?.id || 'admin';
+      const photoId = req.body?.photoId;
+
+      if (!photoId) {
+        res.status(400).json({ success: false, message: 'photoId is required' });
+        return;
+      }
+
+      const result = await AdminService.setAlbumCover(albumId, String(photoId), adminUserId);
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/gallery/photos/bulk-delete
+   * Delete several photos in one call
+   */
+  static async deletePhotos(req: Request, res: Response, next: NextFunction) {
+    try {
+      const adminUserId = req.user?.id || 'admin';
+      const photoIds = req.body?.photoIds;
+
+      if (!Array.isArray(photoIds)) {
+        res.status(400).json({ success: false, message: 'photoIds must be an array' });
+        return;
+      }
+
+      const result = await AdminService.deletePhotos(photoIds.map(String), adminUserId);
 
       res.json({
         success: true,
@@ -661,12 +802,14 @@ export class AdminController {
    */
   static async listAuditLogs(req: Request, res: Response, next: NextFunction) {
     try {
-      const { page, limit, entity, userId, startDate, endDate } = req.query;
+      const { page, limit, entity, userId, action, search, startDate, endDate } = req.query;
       const result = await AdminService.listAuditLogs({
         page: page ? parseInt(page as string, 10) : 1,
         limit: limit ? parseInt(limit as string, 10) : 20,
         entity: entity as string,
         userId: userId as string,
+        action: action as string,
+        search: search as string,
         startDate: startDate as string,
         endDate: endDate as string,
       });
@@ -703,9 +846,8 @@ export class AdminController {
    */
   static async updateSettings(req: Request, res: Response, next: NextFunction) {
     try {
-      const { settings } = req.body;
       const adminUserId = req.user?.id || 'admin';
-      const result = await AdminService.updateSettings(settings, adminUserId);
+      const result = await AdminService.updateSettings(normalizeSettingsPayload(req.body), adminUserId);
 
       res.json({
         success: true,
@@ -741,6 +883,52 @@ function normalizeEventPayload(body: any) {
   if (data.longitude !== undefined && data.longitude !== null && data.longitude !== '') {
     data.longitude = parseFloat(String(data.longitude));
   }
+
+  return data;
+}
+
+/**
+ * Accept either the canonical array form
+ *   { settings: [{ key, value, type?, group? }] }
+ * or a flat map form
+ *   { settings: { 'app.name': 'MYS' } }
+ * so older clients keep working.
+ */
+function normalizeSettingsPayload(body: any): { key: string; value: string; type?: string; group?: string }[] {
+  const settings = body?.settings ?? body;
+
+  if (Array.isArray(settings)) {
+    return settings.map((s) => ({
+      key: String(s?.key ?? ''),
+      value: s?.value === undefined || s?.value === null ? '' : String(s.value),
+      type: s?.type ? String(s.type) : undefined,
+      group: s?.group ? String(s.group) : undefined,
+    }));
+  }
+
+  if (settings && typeof settings === 'object') {
+    return Object.entries(settings).map(([key, value]) => ({
+      key,
+      value: value === undefined || value === null ? '' : String(value),
+    }));
+  }
+
+  return [];
+}
+
+function normalizeAlbumPayload(body: any) {  const data = { ...(body || {}) };
+
+  if ('isPublished' in data) data.isPublished = String(data.isPublished) === 'true';
+  if (data.sortOrder !== undefined && data.sortOrder !== null && data.sortOrder !== '') {
+    data.sortOrder = parseInt(String(data.sortOrder), 10);
+  } else {
+    delete data.sortOrder;
+  }
+
+  // Multipart sends empty strings for untouched fields. For the cover URL an
+  // explicit empty string means "clear it"; for category it means "leave alone".
+  if (data.coverImageUrl === '') data.coverImageUrl = null;
+  if (data.category === '') delete data.category;
 
   return data;
 }

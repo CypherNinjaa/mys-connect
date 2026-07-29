@@ -53,12 +53,20 @@ router.post('/notices/:id/broadcast', AdminController.broadcastNotice);
 router.delete('/notices/:id', AdminController.deleteNotice);
 
 // ─── Gallery ─────────────────────────────
+// Static photo routes come before /gallery/albums/:id so 'photos' is never
+// swallowed as an album id.
+router.post('/gallery/photos/bulk-delete', AdminController.deletePhotos);
+router.patch('/gallery/photos/:id', AdminController.updatePhoto);
+router.delete('/gallery/photos/:id', AdminController.deletePhoto);
+
 router.get('/gallery/albums', AdminController.listAlbums);
-router.post('/gallery/albums', AdminController.createAlbum);
-router.put('/gallery/albums/:id', AdminController.updateAlbum);
+router.post('/gallery/albums', upload.single('coverImage'), AdminController.createAlbum);
+router.get('/gallery/albums/:id', AdminController.getAlbumById);
+router.put('/gallery/albums/:id', upload.single('coverImage'), AdminController.updateAlbum);
 router.delete('/gallery/albums/:id', AdminController.deleteAlbum);
 router.post('/gallery/albums/:id/photos', upload.array('photos', 50), AdminController.uploadPhotos);
-router.delete('/gallery/photos/:id', AdminController.deletePhoto);
+router.put('/gallery/albums/:id/photos/reorder', AdminController.reorderAlbumPhotos);
+router.put('/gallery/albums/:id/cover', AdminController.setAlbumCover);
 
 // ─── Audit Logs ──────────────────────────
 router.get('/audit-logs', AdminController.listAuditLogs);

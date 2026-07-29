@@ -181,49 +181,94 @@ export const deleteNotice = (token: string, id: string) =>
   apiFetch<ApiResponse<void>>(`/admin/notices/${id}`, { token, method: 'DELETE' });
 
 // Gallery
-export const getAlbums = (token: string, params?: URLSearchParams) =>
-  apiFetch<ApiResponse<{ albums: AlbumData[]; pagination: PaginationMeta }>>(`/admin/gallery/albums${params ? `?${params}` : ''}`, { token });
+export interface AlbumListResponse {
+  albums: AlbumData[];
+  stats: AlbumStats;
+  pagination: PaginationMeta;
+}
 
-export const createAlbum = (token: string, data: Partial<AlbumData>) =>
+export const getAlbums = (token: string, params?: URLSearchParams) =>
+  apiFetch<ApiResponse<AlbumListResponse>>(`/admin/gallery/albums${params ? `?${params}` : ''}`, { token });
+
+export const getAlbum = (token: string, id: string) =>
+  apiFetch<ApiResponse<AlbumData>>(`/admin/gallery/albums/${id}`, { token });
+
+export const createAlbum = (token: string, data: FormData | AlbumInput) =>
   apiFetch<ApiResponse<AlbumData>>('/admin/gallery/albums', {
     token,
     method: 'POST',
-    body: JSON.stringify(data),
+    body: data instanceof FormData ? data : JSON.stringify(data),
   });
 
-export const updateAlbum = (token: string, id: string, data: Partial<AlbumData>) =>
+export const updateAlbum = (token: string, id: string, data: FormData | AlbumInput) =>
   apiFetch<ApiResponse<AlbumData>>(`/admin/gallery/albums/${id}`, {
     token,
     method: 'PUT',
-    body: JSON.stringify(data),
+    body: data instanceof FormData ? data : JSON.stringify(data),
   });
 
 export const deleteAlbum = (token: string, id: string) =>
-  apiFetch<ApiResponse<void>>(`/admin/gallery/albums/${id}`, { token, method: 'DELETE' });
+  apiFetch<ApiResponse<{ message: string }>>(`/admin/gallery/albums/${id}`, { token, method: 'DELETE' });
 
 export const uploadPhotos = async (token: string, albumId: string, files: File[]) => {
   const formData = new FormData();
   files.forEach((file) => formData.append('photos', file));
 
-  return apiFetch<ApiResponse<{ count: number }>>(`/admin/gallery/albums/${albumId}/photos`, {
-    token,
-    method: 'POST',
-    body: formData,
-  });
+  return apiFetch<ApiResponse<{ count: number; photos: PhotoData[] }>>(
+    `/admin/gallery/albums/${albumId}/photos`,
+    { token, method: 'POST', body: formData },
+  );
 };
 
+export const updatePhoto = (token: string, photoId: string, data: { caption?: string | null }) =>
+  apiFetch<ApiResponse<PhotoData>>(`/admin/gallery/photos/${photoId}`, {
+    token,
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+
+export const reorderAlbumPhotos = (token: string, albumId: string, photoIds: string[]) =>
+  apiFetch<ApiResponse<{ count: number }>>(`/admin/gallery/albums/${albumId}/photos/reorder`, {
+    token,
+    method: 'PUT',
+    body: JSON.stringify({ photoIds }),
+  });
+
+export const setAlbumCover = (token: string, albumId: string, photoId: string) =>
+  apiFetch<ApiResponse<AlbumData>>(`/admin/gallery/albums/${albumId}/cover`, {
+    token,
+    method: 'PUT',
+    body: JSON.stringify({ photoId }),
+  });
+
 export const deletePhoto = (token: string, photoId: string) =>
-  apiFetch<ApiResponse<void>>(`/admin/gallery/photos/${photoId}`, { token, method: 'DELETE' });
+  apiFetch<ApiResponse<{ message: string }>>(`/admin/gallery/photos/${photoId}`, { token, method: 'DELETE' });
+
+export const deletePhotos = (token: string, photoIds: string[]) =>
+  apiFetch<ApiResponse<{ count: number }>>('/admin/gallery/photos/bulk-delete', {
+    token,
+    method: 'POST',
+    body: JSON.stringify({ photoIds }),
+  });
 
 // Audit Logs
+export interface AuditLogListResponse {
+  logs: AuditLogData[];
+  filters: {
+    entities: { value: string; count: number }[];
+    actions: { value: string; count: number }[];
+  };
+  pagination: PaginationMeta;
+}
+
 export const getAuditLogs = (token: string, params?: URLSearchParams) =>
-  apiFetch<ApiResponse<{ logs: AuditLogData[]; pagination: PaginationMeta }>>(`/admin/audit-logs${params ? `?${params}` : ''}`, { token });
+  apiFetch<ApiResponse<AuditLogListResponse>>(`/admin/audit-logs${params ? `?${params}` : ''}`, { token });
 
 // Settings
 export const getSettings = (token: string) =>
   apiFetch<ApiResponse<Record<string, SettingData[]>>>('/admin/settings', { token });
 
-export const updateSettings = (token: string, settings: Record<string, string>) =>
+export const updateSettings = (token: string, settings: SettingInput[]) =>
   apiFetch<ApiResponse<SettingData[]>>('/admin/settings', {
     token,
     method: 'PUT',
@@ -376,39 +421,98 @@ export interface NoticeData {
   createdBy?: { profile?: { firstName: string; lastName: string } };
 }
 
+/**
+ * Album categories mirror the Prisma `AlbumCategory` enum, which in turn maps
+ * 1:1 onto the mobile gallery's tab bar. Keep the three in sync.
+ */
+export const ALBUM_CATEGORIES = ['EVENTS', 'CELEBRATIONS', 'OTHERS'] as const;
+export type AlbumCategory = (typeof ALBUM_CATEGORIES)[number];
+
+export const ALBUM_CATEGORY_LABELS: Record<AlbumCategory, string> = {
+  EVENTS: 'Events',
+  CELEBRATIONS: 'Celebrations',
+  OTHERS: 'Others',
+};
+
 export interface AlbumData {
   id: string;
   title: string;
-  description?: string;
-  category: string;
-  coverPhotoUrl?: string;
+  description?: string | null;
+  category: AlbumCategory;
+  coverImageUrl?: string | null;
+  /** false when coverImageUrl was borrowed from the first photo rather than set explicitly */
+  hasExplicitCover?: boolean;
   isPublished: boolean;
+  sortOrder: number;
+  createdById: string;
   createdAt: string;
+  updatedAt: string;
   photos?: PhotoData[];
   _count?: { photos: number };
 }
 
+export interface AlbumStats {
+  totalAlbums: number;
+  publishedAlbums: number;
+  draftAlbums: number;
+  totalPhotos: number;
+}
+
+export interface AlbumInput {
+  title?: string;
+  description?: string | null;
+  category?: AlbumCategory;
+  coverImageUrl?: string | null;
+  isPublished?: boolean;
+  sortOrder?: number;
+}
+
 export interface PhotoData {
   id: string;
+  albumId: string;
   imageUrl: string;
-  thumbnailUrl?: string;
-  caption?: string;
+  thumbnailUrl?: string | null;
+  caption?: string | null;
   sortOrder: number;
+  createdAt: string;
+}
+
+export interface AuditLogUser {
+  id: string;
+  email: string;
+  fullName?: string | null;
+  role?: string;
+  avatarUrl?: string | null;
 }
 
 export interface AuditLogData {
   id: string;
+  userId: string;
   action: string;
   entity: string;
-  entityId?: string;
-  details?: string;
+  entityId?: string | null;
+  /** Free-form JSON captured at write time — the source for the Details column */
+  metadata?: Record<string, unknown> | null;
+  ipAddress?: string | null;
   createdAt: string;
-  user?: { email: string; profile?: { firstName: string; lastName: string } };
+  user?: AuditLogUser | null;
 }
+
+export type SettingType = 'string' | 'number' | 'boolean' | 'json';
 
 export interface SettingData {
   id: string;
   key: string;
   value: string;
-  description?: string;
+  type: string;
+  group: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SettingInput {
+  key: string;
+  value: string;
+  type?: string;
+  group?: string;
 }

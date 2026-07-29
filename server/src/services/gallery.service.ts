@@ -1,5 +1,35 @@
+import { AlbumCategory, Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { AppError } from '../middleware/errorHandler';
+
+/** A single photo flattened out of its album, shaped for the mobile gallery grid. */
+interface GalleryItem {
+  id: string;
+  albumId: string;
+  albumTitle: string;
+  category: string;
+  title: string;
+  imageUrl: string;
+  thumbnailUrl: string;
+  createdAt: Date;
+}
+
+/**
+ * Map an incoming category query value onto the enum.
+ * Accepts the mobile tab labels ('Celebrations'), the enum form ('CELEBRATIONS'),
+ * and treats 'All'/absent/unknown as "no filter".
+ */
+function normalizeCategory(value?: string): AlbumCategory | null {
+  if (!value) return null;
+  const upper = value.trim().toUpperCase();
+  if (upper === 'ALL' || upper === '') return null;
+  return upper in AlbumCategory ? AlbumCategory[upper as keyof typeof AlbumCategory] : null;
+}
+
+/** 'CELEBRATIONS' -> 'Celebrations', matching the mobile tab labels. */
+function toCategoryLabel(category: AlbumCategory): string {
+  return category.charAt(0) + category.slice(1).toLowerCase();
+}
 
 export class GalleryService {
   static async getGallery(query?: { category?: string; search?: string; page?: number; limit?: number }) {
@@ -7,7 +37,7 @@ export class GalleryService {
     const limit = Math.min(100, Math.max(1, Number(query?.limit) || 30));
     const skip = (page - 1) * limit;
 
-    const where: any = { isPublished: true };
+    const where: Prisma.AlbumWhereInput = { isPublished: true };
 
     if (query?.search && query.search.trim()) {
       const q = query.search.trim();
@@ -15,6 +45,12 @@ export class GalleryService {
         { title: { contains: q, mode: 'insensitive' } },
         { description: { contains: q, mode: 'insensitive' } },
       ];
+    }
+
+    // Filter at the database level so pagination counts stay accurate
+    const category = normalizeCategory(query?.category);
+    if (category) {
+      where.category = category;
     }
 
     const [total, albums] = await Promise.all([
@@ -35,35 +71,19 @@ export class GalleryService {
       }),
     ]);
 
-    // Flatten photos into structured gallery items with category tags
-    const allPhotos: any[] = [];
+    // Flatten photos into gallery items the mobile grid can render directly.
+    // The category label is title-cased to match the mobile tab labels.
+    const items: GalleryItem[] = [];
     albums.forEach((album) => {
-      let category = 'Events';
-      const text = `${album.title} ${album.description || ''}`.toLowerCase();
-      if (
-        text.includes('celebration') ||
-        text.includes('navami') ||
-        text.includes('diwali') ||
-        text.includes('fest') ||
-        text.includes('cultural')
-      ) {
-        category = 'Celebrations';
-      } else if (
-        text.includes('other') ||
-        text.includes('misc') ||
-        text.includes('workshop') ||
-        text.includes('camp')
-      ) {
-        category = 'Others';
-      }
+      const categoryLabel = toCategoryLabel(album.category);
 
-      if (album.photos && album.photos.length > 0) {
+      if (album.photos.length > 0) {
         album.photos.forEach((photo) => {
-          allPhotos.push({
+          items.push({
             id: photo.id,
             albumId: album.id,
             albumTitle: album.title,
-            category,
+            category: categoryLabel,
             title: photo.caption || album.title,
             imageUrl: photo.imageUrl,
             thumbnailUrl: photo.thumbnailUrl || photo.imageUrl,
@@ -71,11 +91,12 @@ export class GalleryService {
           });
         });
       } else if (album.coverImageUrl) {
-        allPhotos.push({
+        // Cover-only album — surface the cover so the album isn't invisible
+        items.push({
           id: album.id,
           albumId: album.id,
           albumTitle: album.title,
-          category,
+          category: categoryLabel,
           title: album.title,
           imageUrl: album.coverImageUrl,
           thumbnailUrl: album.coverImageUrl,
@@ -84,17 +105,9 @@ export class GalleryService {
       }
     });
 
-    // Filter by category if specified
-    let filteredPhotos = allPhotos;
-    if (query?.category && query.category !== 'All' && query.category !== 'ALL') {
-      filteredPhotos = allPhotos.filter(
-        (p) => p.category.toLowerCase() === query.category?.toLowerCase()
-      );
-    }
-
     return {
       albums,
-      items: filteredPhotos,
+      items,
       pagination: {
         page,
         limit,

@@ -668,7 +668,7 @@ export default function DashboardPage() {
                 <div className="min-w-0">
                   <p className="text-slate-800 font-semibold truncate">
                     <span className="text-slate-900 font-bold">
-                      {log.user?.profile?.firstName || log.user?.email || 'System'}
+                      {log.user?.fullName || log.user?.email || 'System'}
                     </span>{' '}
                     performed <span className="text-[#7A0E16] font-bold">{log.action}</span> on{' '}
                     <span className="font-bold text-slate-700">{log.entity}</span>
