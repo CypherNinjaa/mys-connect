@@ -45,8 +45,8 @@ router.get('/events/:id/registrations', AdminController.getEventRegistrations);
 // ─── Notices ─────────────────────────────
 router.get('/notices/kpis', AdminController.getNoticeKPIs);
 router.get('/notices', AdminController.listNotices);
-router.post('/notices', AdminController.createNotice);
-router.put('/notices/:id', AdminController.updateNotice);
+router.post('/notices', upload.single('image'), AdminController.createNotice);
+router.put('/notices/:id', upload.single('image'), AdminController.updateNotice);
 router.post('/notices/:id/publish', AdminController.publishNotice);
 router.post('/notices/:id/unpublish', AdminController.unpublishNotice);
 router.post('/notices/:id/broadcast', AdminController.broadcastNotice);

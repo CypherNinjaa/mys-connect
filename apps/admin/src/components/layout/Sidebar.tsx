@@ -79,7 +79,7 @@ export function Sidebar({
             {!collapsed && (
               <div className="min-w-0">
                 <div className="flex items-center gap-1">
-                  <h1 className="font-extrabold text-sm leading-tight text-white truncate">MYS CONNECT</h1>
+                  <h1 className="font-extrabold text-sm leading-tight text-white truncate">MYS RANCHI</h1>
                   <ChevronDown className="w-3.5 h-3.5 text-white/50 shrink-0" />
                 </div>
                 <p className="text-[10px] font-medium text-amber-300/80 truncate">Ranchi Chapter Admin</p>

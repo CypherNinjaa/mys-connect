@@ -5,7 +5,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useQuery } from '@tanstack/react-query';
 import { getAuditLogs, type AuditLogData } from '@/lib/api';
 import { formatDateTime } from '@/lib/utils';
-import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function AuditLogsPage() {
   const { getToken } = useAuth();

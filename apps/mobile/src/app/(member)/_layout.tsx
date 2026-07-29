@@ -1,38 +1,56 @@
 import React, { useEffect, useState } from 'react';
-import { Redirect, Tabs } from 'expo-router';
+import { Redirect, Tabs, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@clerk/expo';
 import { Colors } from '../../constants/theme';
 import { ApiService } from '../../services/api';
 
-import { registerForPushNotificationsAsync } from '../../services/notifications.service';
+import {
+  registerForPushNotificationsAsync,
+  setupNotificationListeners,
+  handleInitialNotification,
+} from '../../services/notifications.service';
 
 export default function MemberLayout() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
+  const router = useRouter();
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
   useEffect(() => {
     let isMounted = true;
-    async function initNotifications() {
-      if (isSignedIn) {
-        try {
-          // 1. Request push permission & register push token
-          void registerForPushNotificationsAsync(getToken);
 
-          // 2. Fetch unread notification count
-          const token = await getToken();
-          if (token) {
-            const count = await ApiService.getUnreadNotificationCount(token);
-            if (isMounted) setUnreadCount(count);
-          }
-        } catch {
-          // Quietly swallow if offline
+    async function initNotifications() {
+      if (!isSignedIn) return;
+
+      try {
+        // 1. Request push permission & register push token
+        void registerForPushNotificationsAsync(getToken);
+
+        // 2. Fetch unread notification count
+        const token = await getToken();
+        if (token) {
+          const count = await ApiService.getUnreadNotificationCount(token);
+          if (isMounted) setUnreadCount(count);
         }
+      } catch {
+        // Quietly swallow if offline
       }
     }
+
     initNotifications();
+
+    // 3. Set up notification listeners for foreground + tap events
+    const listeners = setupNotificationListeners(router, () => {
+      // On foreground notification received, increment badge count
+      if (isMounted) setUnreadCount((prev) => prev + 1);
+    });
+
+    // 4. Handle cold-start deep linking (app opened from notification tap)
+    void handleInitialNotification(router);
+
     return () => {
       isMounted = false;
+      listeners.remove();
     };
   }, [isSignedIn]);
 

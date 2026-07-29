@@ -339,4 +339,18 @@ export class ApiService {
     if (!res.ok) throw new Error(data.error?.message || 'Failed to mark all as read');
     return data.data;
   }
+
+  /**
+   * Register an Expo Push Token with the backend server
+   */
+  static async registerPushToken(token: string, pushToken: string, platform: string) {
+    const res = await fetchWithTimeout(`${API.baseUrl}/notifications/push-token`, {
+      method: 'POST',
+      headers: await this.getHeaders(token),
+      body: JSON.stringify({ token: pushToken, platform }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error?.message || 'Failed to register push token');
+    return data.data;
+  }
 }

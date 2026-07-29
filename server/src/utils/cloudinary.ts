@@ -19,7 +19,7 @@ export const uploadToCloudinary = async (
     { quality: 'auto', fetch_format: 'auto' },
   ];
 
-  if (folder.includes('events')) {
+  if (folder.includes('events') || folder.includes('notices')) {
     defaultTransformations = [
       { width: 1200, height: 630, crop: 'fill', gravity: 'auto' },
       { quality: 'auto', fetch_format: 'auto' },

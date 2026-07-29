@@ -396,7 +396,13 @@ export class AdminController {
   static async createNotice(req: Request, res: Response, next: NextFunction) {
     try {
       const adminUserId = req.user?.id || 'admin';
-      const result = await AdminService.createNotice(req.body, adminUserId);
+      const payload = normalizeNoticePayload(req.body);
+
+      if (req.file) {
+        payload.imageUrl = await uploadToCloudinary(req.file.buffer, 'mys-connect/notices');
+      }
+
+      const result = await AdminService.createNotice(payload, adminUserId);
 
       res.status(201).json({
         success: true,
@@ -415,7 +421,13 @@ export class AdminController {
     try {
       const id = String(req.params.id);
       const adminUserId = req.user?.id || 'admin';
-      const result = await AdminService.updateNotice(id, req.body, adminUserId);
+      const payload = normalizeNoticePayload(req.body);
+
+      if (req.file) {
+        payload.imageUrl = await uploadToCloudinary(req.file.buffer, 'mys-connect/notices');
+      }
+
+      const result = await AdminService.updateNotice(id, payload, adminUserId);
 
       res.json({
         success: true,
@@ -728,6 +740,29 @@ function normalizeEventPayload(body: any) {
   }
   if (data.longitude !== undefined && data.longitude !== null && data.longitude !== '') {
     data.longitude = parseFloat(String(data.longitude));
+  }
+
+  return data;
+}
+
+function normalizeNoticePayload(body: any) {
+  const data = { ...body };
+
+  if (data.publishedAt && typeof data.publishedAt === 'string') data.publishedAt = new Date(data.publishedAt);
+  if (data.expiresAt && typeof data.expiresAt === 'string') {
+    data.expiresAt = data.expiresAt === '' ? null : new Date(data.expiresAt);
+  }
+
+  if ('isPinned' in data) data.isPinned = String(data.isPinned) === 'true';
+  if ('isPublished' in data) data.isPublished = String(data.isPublished) === 'true';
+
+  // Multipart sends empty strings for untouched optional fields.
+  // For URL fields an empty string means "clear it", so map to null.
+  for (const key of ['imageUrl', 'attachmentUrl']) {
+    if (data[key] === '') data[key] = null;
+  }
+  for (const key of ['priority', 'expiresAt']) {
+    if (data[key] === '') delete data[key];
   }
 
   return data;

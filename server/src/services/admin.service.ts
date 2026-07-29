@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { UserStatus, UserRole, EventStatus, RSVPStatus, NoticeType, NoticePriority } from '@prisma/client';
+import { UserStatus, UserRole, EventStatus, RSVPStatus, NoticeType, NoticePriority, Prisma } from '@prisma/client';
 import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation, clerkClient } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
@@ -913,6 +913,16 @@ export class AdminService {
       },
     });
 
+    // If created as published, notify all active users
+    if (event.status === EventStatus.PUBLISHED) {
+      void NotificationService.broadcastEventNotification(
+        event.id,
+        `New Event: ${event.title}`,
+        data.shortDesc || data.description?.substring(0, 160) || event.title,
+        { action: 'CREATED' }
+      );
+    }
+
     return event;
   }
 
@@ -976,6 +986,24 @@ export class AdminService {
       },
     });
 
+    // Notify registered attendees when a published event is updated
+    if (event.status === EventStatus.PUBLISHED) {
+      const registeredUsers = await prisma.eventRSVP.findMany({
+        where: { eventId: id },
+        select: { userId: true },
+      });
+      if (registeredUsers.length > 0) {
+        const registeredUserIds = registeredUsers.map((r) => r.userId);
+        void NotificationService.broadcastEventNotification(
+          event.id,
+          `Event Updated: ${event.title}`,
+          event.shortDesc || event.description?.substring(0, 160) || event.title,
+          { action: 'UPDATED' },
+          registeredUserIds
+        );
+      }
+    }
+
     return event;
   }
 
@@ -998,6 +1026,14 @@ export class AdminService {
         metadata: { title: event.title },
       },
     });
+
+    // Notify all active users about newly published event
+    void NotificationService.broadcastEventNotification(
+      event.id,
+      `New Event: ${event.title}`,
+      event.shortDesc || event.description?.substring(0, 160) || event.title,
+      { action: 'PUBLISHED' }
+    );
 
     return event;
   }
@@ -1044,6 +1080,23 @@ export class AdminService {
         metadata: { title: event.title },
       },
     });
+
+    // Notify registered attendees about cancellation
+    const registrations = await prisma.eventRSVP.findMany({
+      where: { eventId: id, status: RSVPStatus.REGISTERED },
+      select: { userId: true },
+    });
+    const registeredUserIds = registrations.map((r) => r.userId);
+
+    if (registeredUserIds.length > 0) {
+      void NotificationService.broadcastEventNotification(
+        event.id,
+        `Event Cancelled: ${event.title}`,
+        `The event "${event.title}" has been cancelled.`,
+        { action: 'CANCELLED' },
+        registeredUserIds
+      );
+    }
 
     return event;
   }
@@ -1168,8 +1221,8 @@ export class AdminService {
       isPublished?: boolean;
       publishedAt?: Date;
       expiresAt?: Date;
-      imageUrl?: string;
-      attachmentUrl?: string;
+      imageUrl?: string | null;
+      attachmentUrl?: string | null;
     },
     adminUserId: string,
   ) {
@@ -1215,15 +1268,32 @@ export class AdminService {
       isPinned?: boolean;
       isPublished?: boolean;
       publishedAt?: Date;
-      expiresAt?: Date;
-      imageUrl?: string;
-      attachmentUrl?: string;
+      expiresAt?: Date | null;
+      imageUrl?: string | null;
+      attachmentUrl?: string | null;
     },
     adminUserId: string,
   ) {
+    // Only forward known columns — the payload comes straight from a client form
+    const updateData: Prisma.NoticeUpdateInput = {};
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.content !== undefined) updateData.content = data.content;
+    if (data.type !== undefined) updateData.type = data.type;
+    if (data.priority !== undefined) updateData.priority = data.priority;
+    if (data.isPinned !== undefined) updateData.isPinned = data.isPinned;
+    if (data.isPublished !== undefined) {
+      updateData.isPublished = data.isPublished;
+      // Stamp publishedAt the first time a draft goes live
+      if (data.isPublished && !data.publishedAt) updateData.publishedAt = new Date();
+    }
+    if (data.publishedAt !== undefined) updateData.publishedAt = data.publishedAt;
+    if (data.expiresAt !== undefined) updateData.expiresAt = data.expiresAt;
+    if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+    if (data.attachmentUrl !== undefined) updateData.attachmentUrl = data.attachmentUrl;
+
     const notice = await prisma.notice.update({
       where: { id },
-      data,
+      data: updateData,
     });
 
     await prisma.auditLog.create({

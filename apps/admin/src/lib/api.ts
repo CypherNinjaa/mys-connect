@@ -154,18 +154,18 @@ export const getNoticeKPIs = (token: string) =>
 export const getNotices = (token: string, params?: URLSearchParams) =>
   apiFetch<ApiResponse<{ notices: NoticeData[]; pagination: PaginationMeta }>>(`/admin/notices${params ? `?${params}` : ''}`, { token });
 
-export const createNotice = (token: string, data: Partial<NoticeData>) =>
+export const createNotice = (token: string, data: FormData | Partial<NoticeData>) =>
   apiFetch<ApiResponse<NoticeData>>('/admin/notices', {
     token,
     method: 'POST',
-    body: JSON.stringify(data),
+    body: data instanceof FormData ? data : JSON.stringify(data),
   });
 
-export const updateNotice = (token: string, id: string, data: Partial<NoticeData>) =>
+export const updateNotice = (token: string, id: string, data: FormData | Partial<NoticeData>) =>
   apiFetch<ApiResponse<NoticeData>>(`/admin/notices/${id}`, {
     token,
     method: 'PUT',
-    body: JSON.stringify(data),
+    body: data instanceof FormData ? data : JSON.stringify(data),
   });
 
 export const publishNotice = (token: string, id: string) =>

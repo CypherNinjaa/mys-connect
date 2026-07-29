@@ -73,6 +73,45 @@ export default function NoticesPage() {
     sendBroadcastNow: true,
   });
 
+  // Cloudinary image upload state
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+
+  const acceptImageFile = (file: File | undefined | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageError('Please choose an image file (PNG, JPG or WEBP).');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setImageError('Image is too large — maximum size is 10MB.');
+      return;
+    }
+    setImageError(null);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    acceptImageFile(e.target.files?.[0]);
+    e.target.value = '';
+  };
+
+  const handleImageDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setDragActive(false);
+    acceptImageFile(e.dataTransfer.files?.[0]);
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setImageError(null);
+    setForm((prev) => ({ ...prev, imageUrl: '' }));
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchInput);
@@ -109,7 +148,7 @@ export default function NoticesPage() {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: async (payload: Partial<NoticeData>) => {
+    mutationFn: async (payload: FormData) => {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
       return createNotice(token, payload);
@@ -122,7 +161,7 @@ export default function NoticesPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: Partial<NoticeData> }) => {
+    mutationFn: async ({ id, payload }: { id: string; payload: FormData }) => {
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
       return updateNotice(token, id, payload);
@@ -207,6 +246,9 @@ export default function NoticesPage() {
       imageUrl: '',
       sendBroadcastNow: true,
     });
+    setImageFile(null);
+    setImagePreview(null);
+    setImageError(null);
     setIsModalOpen(true);
   };
 
@@ -222,41 +264,44 @@ export default function NoticesPage() {
       imageUrl: notice.imageUrl || '',
       sendBroadcastNow: false,
     });
+    setImageFile(null);
+    setImagePreview(notice.imageUrl || null);
+    setImageError(null);
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingNotice(null);
+    setImageFile(null);
+    setImagePreview(null);
+    setImageError(null);
   };
 
   const handleSubmitForm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.title || !form.content) return;
 
-    if (editingNotice) {
-      updateMutation.mutate({
-        id: editingNotice.id,
-        payload: {
-          title: form.title,
-          content: form.content,
-          type: form.type,
-          priority: form.priority,
-          isPublished: form.isPublished,
-          isPinned: form.isPinned,
-          imageUrl: form.imageUrl || undefined,
-        },
-      });
+    const formData = new FormData();
+    formData.append('title', form.title);
+    formData.append('content', form.content);
+    formData.append('type', form.type);
+    formData.append('priority', form.priority);
+    formData.append('isPublished', String(form.isPublished));
+    formData.append('isPinned', String(form.isPinned));
+
+    if (imageFile) {
+      // New file selected — server uploads it to Cloudinary
+      formData.append('image', imageFile);
     } else {
-      createMutation.mutate({
-        title: form.title,
-        content: form.content,
-        type: form.type,
-        priority: form.priority,
-        isPublished: form.isPublished,
-        isPinned: form.isPinned,
-        imageUrl: form.imageUrl || undefined,
-      });
+      // Keep the existing URL, or send empty to clear a removed image
+      formData.append('imageUrl', form.imageUrl || '');
+    }
+
+    if (editingNotice) {
+      updateMutation.mutate({ id: editingNotice.id, payload: formData });
+    } else {
+      createMutation.mutate(formData);
     }
   };
 
@@ -706,15 +751,51 @@ export default function NoticesPage() {
 
               <div>
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
-                  Banner / Image URL (Optional)
+                  Banner Image (Optional)
                 </label>
-                <input
-                  type="url"
-                  value={form.imageUrl}
-                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                  placeholder="https://res.cloudinary.com/..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20"
-                />
+                {imagePreview ? (
+                  <div className="relative w-full h-48 rounded-xl overflow-hidden border border-gray-200 shadow-inner group">
+                    <img src={imagePreview} alt="Banner preview" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                      <label className="bg-white text-gray-900 text-xs font-semibold px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-100">
+                        Replace Image
+                        <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-red-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {imageFile && (
+                      <span className="absolute top-2 left-2 bg-emerald-600 text-white text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wide">
+                        New upload pending
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <label
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragActive(true);
+                    }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={handleImageDrop}
+                    className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                      dragActive ? 'border-maroon bg-maroon/10' : 'border-gray-300 hover:border-maroon hover:bg-maroon/5'
+                    }`}
+                  >
+                    <ImageIcon className="w-7 h-7 text-maroon/60 mb-2" />
+                    <span className="text-sm font-semibold text-gray-700">
+                      {dragActive ? 'Drop image to upload' : 'Click or drag an image here'}
+                    </span>
+                    <span className="text-xs text-gray-400 mt-1">PNG, JPG or WEBP — max 10MB, uploaded to Cloudinary</span>
+                    <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                  </label>
+                )}
+                {imageError && <p className="text-xs font-semibold text-red-600 mt-1.5">{imageError}</p>}
               </div>
 
               <div>
