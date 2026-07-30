@@ -1,49 +1,50 @@
 {
-  "name": "mys-server",
-  "version": "1.0.0",
-  "private": true,
-  "description": "MYS CONNECT Backend API Server",
-  "main": "dist/index.js",
-  "scripts": {
-    "dev": "nodemon",
-    "prebuild": "npx prisma generate",
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "db:migrate": "npx prisma migrate dev",
-    "db:seed": "npx prisma db seed",
-    "db:studio": "npx prisma studio",
-    "db:generate": "npx prisma generate",
-    "db:push": "npx prisma db push",
-    "db:reset": "npx prisma migrate reset"
-  },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
-  },
-  "dependencies": {
-    "@clerk/express": "^1.0.0",
-    "@prisma/client": "^6.0.0",
-    "cloudinary": "^2.5.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.0",
-    "express": "^4.21.0",
-    "express-rate-limit": "^7.4.0",
-    "helmet": "^8.0.0",
-    "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1",
-    "socket.io": "^4.8.0",
-    "svix": "^1.99.1",
-    "winston": "^3.15.0",
-    "zod": "^3.24.0"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.0",
-    "@types/morgan": "^1.9.9",
-    "@types/multer": "^1.4.12",
-    "@types/node": "^22.0.0",
-    "nodemon": "^3.1.0",
-    "prisma": "^6.0.0",
-    "ts-node": "^10.9.0",
-    "typescript": "^5.6.0"
-  }
+	"name": "mys-server",
+	"version": "1.0.0",
+	"private": true,
+	"description": "MYS CONNECT Backend API Server",
+	"main": "dist/index.js",
+	"scripts": {
+		"dev": "nodemon",
+		"prebuild": "npx prisma generate",
+		"build": "tsc",
+		"start": "npx prisma migrate deploy && node dist/index.js",
+		"db:migrate": "npx prisma migrate dev",
+		"db:deploy": "npx prisma migrate deploy",
+		"db:generate": "npx prisma generate",
+		"db:push": "npx prisma db push",
+		"db:seed": "npx prisma db seed",
+		"db:studio": "npx prisma studio",
+		"db:reset": "npx prisma migrate reset"
+	},
+	"prisma": {
+		"seed": "ts-node prisma/seed.ts"
+	},
+	"dependencies": {
+		"@clerk/express": "^1.0.0",
+		"@prisma/client": "^6.0.0",
+		"cloudinary": "^2.5.0",
+		"cors": "^2.8.5",
+		"dotenv": "^16.4.0",
+		"express": "^4.21.0",
+		"express-rate-limit": "^7.4.0",
+		"helmet": "^8.0.0",
+		"morgan": "^1.10.0",
+		"multer": "^1.4.5-lts.1",
+		"socket.io": "^4.8.0",
+		"svix": "^1.99.1",
+		"winston": "^3.15.0",
+		"zod": "^3.24.0"
+	},
+	"devDependencies": {
+		"@types/cors": "^2.8.17",
+		"@types/express": "^5.0.0",
+		"@types/morgan": "^1.9.9",
+		"@types/multer": "^1.4.12",
+		"@types/node": "^22.0.0",
+		"nodemon": "^3.1.0",
+		"prisma": "^6.0.0",
+		"ts-node": "^10.9.0",
+		"typescript": "^5.6.0"
+	}
 }
