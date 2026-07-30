@@ -1,15 +1,104 @@
 import { API } from '../constants/theme';
 
-const DEFAULT_TIMEOUT = 450000; // 45 seconds
-const UPLOAD_TIMEOUT = 900000; // 90 seconds for uploads
+const DEFAULT_TIMEOUT = 45_000; // 45 seconds
+const UPLOAD_TIMEOUT = 90_000; // 90 seconds for uploads
+const AUTH_TIMEOUT = 15_000; // auth gate must not hang the splash screen
+
+/**
+ * Error type that keeps the HTTP status (or the lack of one) attached.
+ *
+ * The auth gate has to tell "the server said 403, this account is blocked"
+ * apart from "we never reached the server". A bare `Error` loses that, which is
+ * how a signed-out-worthy response and a flaky wifi connection ended up on the
+ * same code path.
+ */
+export class ApiError extends Error {
+  /** HTTP status, or `0` when the request never produced a response. */
+  readonly status: number;
+  readonly isTimeout: boolean;
+
+  constructor(message: string, status: number, isTimeout = false) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.isTimeout = isTimeout;
+  }
+
+  /** True when the request failed before the server answered. */
+  get isNetworkError(): boolean {
+    return this.status === 0;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
+}
+
+export type MemberStatus = 'PENDING' | 'ACTIVE' | 'DEACTIVATED' | 'REJECTED' | 'SUSPENDED';
+
+export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
+
+export type BloodGroup =
+  | 'A_POSITIVE'
+  | 'A_NEGATIVE'
+  | 'B_POSITIVE'
+  | 'B_NEGATIVE'
+  | 'AB_POSITIVE'
+  | 'AB_NEGATIVE'
+  | 'O_POSITIVE'
+  | 'O_NEGATIVE';
+
+export interface MemberCity {
+  id: string;
+  name: string;
+  state?: string;
+}
+
+/** Nested `profile` relation on `GET /users/me`. Every column is nullable. */
+export interface MemberProfile {
+  id?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+  dateOfBirth?: string | null;
+  gender?: Gender | null;
+  bloodGroup?: BloodGroup | null;
+  avatarUrl?: string | null;
+  address?: string | null;
+  cityId?: string | null;
+  city?: MemberCity | null;
+  state?: string | null;
+  pinCode?: string | null;
+  occupation?: string | null;
+  organization?: string | null;
+  designation?: string | null;
+  bio?: string | null;
+}
+
+/** Shape of `GET /users/me` — the user row with its profile relation included. */
+export interface CurrentUser {
+  id: string;
+  clerkId?: string;
+  email?: string;
+  phone?: string | null;
+  status: MemberStatus;
+  role?: string;
+  profileComplete?: boolean;
+  memberId?: string | null;
+  fullName?: string | null;
+  avatarUrl?: string | null;
+  profile?: MemberProfile | null;
+  /** Server-side value of the `registration.requires_approval` app setting. */
+  requiresApproval?: boolean;
+}
 
 export interface RegisterProfileData {
   firstName: string;
   lastName: string;
   phone?: string;
   dateOfBirth?: string;
-  gender?: 'MALE' | 'FEMALE' | 'OTHER';
-  bloodGroup?: 'A_POSITIVE' | 'A_NEGATIVE' | 'B_POSITIVE' | 'B_NEGATIVE' | 'AB_POSITIVE' | 'AB_NEGATIVE' | 'O_POSITIVE' | 'O_NEGATIVE';
+  gender?: Gender;
+  bloodGroup?: BloodGroup;
   address?: string;
   cityId?: string;
   pinCode?: string;
@@ -19,10 +108,41 @@ export interface RegisterProfileData {
   bio?: string;
 }
 
-function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = DEFAULT_TIMEOUT): Promise<Response> {
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = DEFAULT_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(id));
+  let timedOut = false;
+  const id = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeout);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    // Both an abort and a dead connection land here. Status 0 marks "the server
+    // never answered" so callers can retry instead of signing the user out.
+    if (timedOut) {
+      throw new ApiError(`Request timed out after ${Math.round(timeout / 1000)}s`, 0, true);
+    }
+    throw new ApiError(error instanceof Error ? error.message : 'Network request failed', 0);
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+/** Parse a JSON response, raising an {@link ApiError} that keeps the status. */
+async function parseJson(res: Response, fallbackMessage: string) {
+  let body: { error?: { message?: string }; data?: unknown } | null = null;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  if (!res.ok) {
+    throw new ApiError(body?.error?.message || fallbackMessage, res.status);
+  }
+  return body;
 }
 
 export class ApiService {
@@ -54,16 +174,17 @@ export class ApiService {
   /**
    * Fetch current authenticated user DB profile & approval status
    */
-  static async getMe(token: string) {
-    const res = await fetchWithTimeout(`${API.baseUrl}/users/me`, {
-      method: 'GET',
-      headers: await this.getHeaders(token),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error?.message || 'Failed to fetch user profile');
-    }
-    return data.data;
+  static async getMe(token: string): Promise<CurrentUser | null> {
+    const res = await fetchWithTimeout(
+      `${API.baseUrl}/users/me`,
+      {
+        method: 'GET',
+        headers: await this.getHeaders(token),
+      },
+      AUTH_TIMEOUT
+    );
+    const data = await parseJson(res, 'Failed to fetch user profile');
+    return (data?.data as CurrentUser) ?? null;
   }
 
   /**
@@ -103,9 +224,9 @@ export class ApiService {
   /**
    * Upload profile image to Cloudinary via base64 or FormData
    */
-  static async uploadAvatar(token: string, imageUriOrBase64: string) {
-    let bodyData: any;
-    let headers: Record<string, string> = {
+  static async uploadAvatar(token: string, imageUriOrBase64: string): Promise<{ avatarUrl?: string } | null> {
+    let bodyData: BodyInit;
+    const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
     };
 
@@ -121,12 +242,13 @@ export class ApiService {
         const match = /\.(\w+)$/.exec(filename);
         const type = match ? `image/${match[1]}` : `image/jpeg`;
 
-        // @ts-expect-error - React Native FormData accepts uri/name/type object
+        // React Native's FormData accepts a {uri,name,type} object where the DOM
+        // typings only allow a Blob.
         formData.append('avatar', {
           uri: imageUriOrBase64,
           name: filename,
           type,
-        });
+        } as unknown as Blob);
         bodyData = formData;
       } catch {
         // Fallback to JSON payload
@@ -141,11 +263,8 @@ export class ApiService {
       body: bodyData,
     }, UPLOAD_TIMEOUT);
 
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error?.message || 'Failed to upload avatar');
-    }
-    return data.data;
+    const data = await parseJson(res, 'Failed to upload avatar');
+    return (data?.data as { avatarUrl?: string }) ?? null;
   }
 
   /**
@@ -349,8 +468,23 @@ export class ApiService {
       headers: await this.getHeaders(token),
       body: JSON.stringify({ token: pushToken, platform }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Failed to register push token');
-    return data.data;
+    const data = await parseJson(res, 'Failed to register push token');
+    return data?.data;
+  }
+
+  /**
+   * Detach an Expo Push Token from the signed-in account.
+   *
+   * Called on sign-out so the next account on this device does not inherit the
+   * previous member's notifications.
+   */
+  static async unregisterPushToken(token: string, pushToken: string) {
+    const res = await fetchWithTimeout(`${API.baseUrl}/notifications/push-token`, {
+      method: 'DELETE',
+      headers: await this.getHeaders(token),
+      body: JSON.stringify({ token: pushToken }),
+    });
+    const data = await parseJson(res, 'Failed to unregister push token');
+    return data?.data;
   }
 }

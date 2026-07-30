@@ -11,7 +11,8 @@ import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
-import { ApiService } from '../../services/api';
+import { resolveAuthRoute } from '../../services/authGate';
+import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
 
 export default function PendingApprovalScreen() {
   const { getToken, signOut } = useAuth();
@@ -24,24 +25,29 @@ export default function PendingApprovalScreen() {
     setChecking(true);
     try {
       const token = await getToken();
-      if (!token) {
-        router.replace('/(auth)/sign-in');
-        return;
-      }
+      // Same decision the splash screen makes, so the two can never disagree
+      // and bounce the member back and forth.
+      const result = await resolveAuthRoute(token);
 
-      const user = await ApiService.getMe(token);
-
-      if (user.status === 'ACTIVE') {
-        router.replace('/(member)/home');
-      } else if (user.status === 'DEACTIVATED' || user.status === 'REJECTED') {
-        router.replace('/(auth)/deactivated');
-      } else {
+      if (result.route === '/(auth)/pending-approval') {
         showAlert({
           title: 'Under Review',
           message: 'Your profile registration is still under review by MYS Ranchi administrators.',
           type: 'info',
         });
+        return;
       }
+
+      if (result.route === '/(auth)/network-error') {
+        showAlert({
+          title: 'Connection Problem',
+          message: 'We could not reach the server. Please check your connection and try again.',
+          type: 'error',
+        });
+        return;
+      }
+
+      router.replace(result.route as Parameters<typeof router.replace>[0]);
     } catch (err) {
       console.error('Check status error:', err);
     } finally {
@@ -50,6 +56,9 @@ export default function PendingApprovalScreen() {
   };
 
   const handleSignOut = async () => {
+    // Release the push token first — otherwise the next account on this handset
+    // keeps receiving notifications meant for this member.
+    await unregisterPushNotificationsAsync(getToken);
     await signOut();
     router.replace('/(auth)/sign-in');
   };

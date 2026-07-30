@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { useCustomAlert } from '../../context/CustomAlertContext';
 import { ApiService, RegisterProfileData } from '../../services/api';
+import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
 import { ProfileSkeleton } from '../../components/ui/SkeletonLoader';
 import { CloudinaryMedia } from '../../components/ui/CloudinaryMedia';
 
@@ -117,11 +118,17 @@ export default function ProfileScreen() {
   };
 
   useEffect(() => {
-    if (isSignedIn) {
-      void loadProfile();
-    } else {
-      setLoading(false);
+    // The loader is awaited inside the effect rather than called from its body,
+    // so its setState calls land after the first paint instead of cascading.
+    async function run() {
+      if (isSignedIn) {
+        await loadProfile();
+      } else {
+        setLoading(false);
+      }
     }
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);
 
   // Handle Cloudinary Avatar Upload
@@ -277,6 +284,8 @@ export default function ProfileScreen() {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
+            // Detach this device's push token before the session goes away.
+            await unregisterPushNotificationsAsync(getToken);
             await signOut();
             router.replace('/(auth)/sign-in');
           },

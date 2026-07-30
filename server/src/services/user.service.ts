@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma';
 import { UserStatus, Gender, BloodGroup } from '@prisma/client';
 import { AppError } from '../middleware/errorHandler';
+import { registrationRequiresApproval } from '../utils/appSettings';
 
 export interface RegisterProfileInput {
   firstName: string;
@@ -147,12 +148,19 @@ export class UserService {
     }
 
     // Update User model fields
+    // When admin approval is switched off, a completed profile is enough to
+    // activate the account outright — otherwise the member stays PENDING and
+    // sits on the waiting screen until an admin approves them.
+    const requiresApproval = await registrationRequiresApproval();
+    const activateNow = !requiresApproval && user.status === UserStatus.PENDING;
+
     await prisma.user.update({
       where: { id: userId },
       data: {
         fullName,
         memberId,
         profileComplete: true,
+        ...(activateNow ? { status: UserStatus.ACTIVE } : {}),
         ...(data.phone ? { phone: data.phone } : {}),
       },
     });
@@ -160,6 +168,7 @@ export class UserService {
     return {
       user: await this.getUserByClerkId(user.clerkId),
       profile,
+      requiresApproval,
     };
   }
 

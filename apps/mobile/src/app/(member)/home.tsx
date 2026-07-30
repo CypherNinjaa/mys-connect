@@ -159,7 +159,13 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    void loadData(false);
+    // Awaited inside the effect rather than called from its body, so the loader's
+    // setState calls land after the first paint instead of cascading.
+    async function run() {
+      await loadData(false);
+    }
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);
 
   // Rate-Limited Manual Refresh

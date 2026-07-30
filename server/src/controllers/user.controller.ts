@@ -5,6 +5,7 @@ import { uploadToCloudinary } from '../utils/cloudinary';
 import { AppError } from '../middleware/errorHandler';
 import { BloodGroup, Gender } from '@prisma/client';
 import { prisma } from '../utils/prisma';
+import { registrationRequiresApproval } from '../utils/appSettings';
 import { z } from 'zod';
 
 const optionalText = z.string().trim().max(500).optional();
@@ -42,19 +43,23 @@ export class UserController {
       const clerkId = auth?.userId;
       const user = req.user;
 
+      // The mobile auth gate needs this to decide whether a freshly registered
+      // member waits for approval or goes straight into the app.
+      const requiresApproval = await registrationRequiresApproval();
+
       if (!user && clerkId) {
         // Auto-sync user if not in DB yet
         const email = (auth?.sessionClaims as any)?.email || clerkId;
         const syncedUser = await UserService.syncUserFromClerk(clerkId, email);
         return res.json({
           success: true,
-          data: syncedUser,
+          data: { ...syncedUser, requiresApproval },
         });
       }
 
       res.json({
         success: true,
-        data: user,
+        data: user ? { ...user, requiresApproval } : user,
       });
     } catch (error) {
       next(error);

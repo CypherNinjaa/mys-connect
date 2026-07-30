@@ -4,17 +4,22 @@ import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
+import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
 
 export default function DeactivatedScreen() {
-  const { signOut } = useAuth();
+  const { signOut, getToken } = useAuth();
   const { user: clerkUser } = useUser();
   const router = useRouter();
 
-  const reason =
-    (clerkUser?.publicMetadata as any)?.statusReason ||
-    (clerkUser?.publicMetadata as any)?.reasonNote;
+  const metadata = clerkUser?.publicMetadata as
+    | { statusReason?: string; reasonNote?: string }
+    | undefined;
+  const reason = metadata?.statusReason || metadata?.reasonNote;
 
   const handleSignOut = async () => {
+    // Best effort — the server rejects requests from a blocked account, but the
+    // local marker still has to go so the next account registers cleanly.
+    await unregisterPushNotificationsAsync(getToken);
     await signOut();
     router.replace('/(auth)/sign-in');
   };
@@ -32,7 +37,7 @@ export default function DeactivatedScreen() {
         {reason ? (
           <View style={styles.reasonBox}>
             <Text style={styles.reasonLabel}>Reason given by Admin:</Text>
-            <Text style={styles.reasonText}>"{reason}"</Text>
+            <Text style={styles.reasonText}>&quot;{reason}&quot;</Text>
           </View>
         ) : (
           <Text style={styles.description}>

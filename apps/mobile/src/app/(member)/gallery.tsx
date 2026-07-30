@@ -185,7 +185,12 @@ export default function GalleryScreen() {
   );
 
   useEffect(() => {
-    void loadGalleryData(false);
+    // Awaited inside the effect rather than called from its body, so the loader's
+    // setState calls land after the first paint instead of cascading.
+    async function run() {
+      await loadGalleryData(false);
+    }
+    void run();
   }, [loadGalleryData]);
 
   // Rate-Limited Manual Pull-to-Refresh

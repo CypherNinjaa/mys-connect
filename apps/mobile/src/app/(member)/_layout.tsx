@@ -12,7 +12,7 @@ import {
 } from '../../services/notifications.service';
 
 export default function MemberLayout() {
-  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken, userId } = useAuth();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState<number>(0);
 
@@ -20,11 +20,13 @@ export default function MemberLayout() {
     let isMounted = true;
 
     async function initNotifications() {
-      if (!isSignedIn) return;
+      if (!isSignedIn || !userId) return;
 
       try {
-        // 1. Request push permission & register push token
-        void registerForPushNotificationsAsync(getToken);
+        // 1. Request push permission & register push token. The service skips
+        //    the network call when this device already registered this token
+        //    for this account, so re-opening the app costs nothing.
+        void registerForPushNotificationsAsync(getToken, userId);
 
         // 2. Fetch unread notification count
         const token = await getToken();
@@ -52,7 +54,10 @@ export default function MemberLayout() {
       isMounted = false;
       listeners.remove();
     };
-  }, [isSignedIn]);
+    // `getToken` and `router` are recreated on every render; including them would
+    // tear down and re-attach the notification listeners continuously.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignedIn, userId]);
 
   if (!isLoaded) {
     return null;

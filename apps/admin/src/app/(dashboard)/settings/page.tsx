@@ -63,7 +63,8 @@ export default function SettingsPage() {
     },
   });
 
-  const grouped = data?.data ?? {};
+  // Memoised so the `?? {}` fallback doesn't hand `groups` a new object each render.
+  const grouped = useMemo(() => data?.data ?? {}, [data]);
 
   const groups = useMemo(
     () =>

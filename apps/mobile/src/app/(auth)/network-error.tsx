@@ -6,10 +6,11 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
 import { ApiService } from '../../services/api';
+import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
 import { NETWORK_CONFIG } from '../../config/network.config';
 
 export default function NetworkErrorScreen() {
-  const { signOut } = useAuth();
+  const { signOut, getToken } = useAuth();
   const { showAlert } = useCustomAlert();
   const router = useRouter();
   const [retrying, setRetrying] = useState(false);
@@ -45,6 +46,10 @@ export default function NetworkErrorScreen() {
 
   const handleSignOut = async () => {
     try {
+      // The server is unreachable by definition on this screen, so the DELETE
+      // will almost certainly fail — the helper still clears the local marker,
+      // which is what stops the next account inheriting this device's token.
+      await unregisterPushNotificationsAsync(getToken);
       await signOut();
       router.replace('/(auth)/sign-in');
     } catch {

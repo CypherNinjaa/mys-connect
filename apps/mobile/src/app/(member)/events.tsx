@@ -120,7 +120,12 @@ export default function EventsScreen() {
   }, [getToken]);
 
   useEffect(() => {
-    void loadEventsData(false);
+    // Awaited inside the effect rather than called from its body, so the loader's
+    // setState calls land after the first paint instead of cascading.
+    async function run() {
+      await loadEventsData(false);
+    }
+    void run();
   }, [loadEventsData]);
 
   // Rate-Limited Manual Pull-to-Refresh

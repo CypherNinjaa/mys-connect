@@ -93,10 +93,12 @@ export default function AuditLogsPage() {
     },
   });
 
-  const logs = data?.data?.logs ?? [];
+  // Memoised because the `?? []` fallback would otherwise be a fresh array on
+  // every render, re-running the useMemos below for no reason.
+  const logs = useMemo(() => data?.data?.logs ?? [], [data]);
   const pagination = data?.data?.pagination;
   const entityOptions = data?.data?.filters?.entities ?? [];
-  const actionOptions = data?.data?.filters?.actions ?? [];
+  const actionOptions = useMemo(() => data?.data?.filters?.actions ?? [], [data]);
 
   const hasFilters =
     Boolean(debouncedSearch) ||

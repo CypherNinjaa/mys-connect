@@ -68,12 +68,18 @@ export default function NoticesScreen() {
   };
 
   useEffect(() => {
-    if (isSignedIn) {
-      setLoading(true);
-      void fetchNotices();
-    } else {
-      setLoading(false);
+    // The loader is awaited inside the effect rather than called from its body,
+    // so its setState calls land after the first paint instead of cascading.
+    async function run() {
+      if (isSignedIn) {
+        setLoading(true);
+        await fetchNotices();
+      } else {
+        setLoading(false);
+      }
     }
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCategory, isSignedIn]);
 
   const onRefresh = () => {

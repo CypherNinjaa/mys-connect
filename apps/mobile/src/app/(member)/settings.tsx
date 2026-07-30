@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { useAuth, useClerk } from '@clerk/expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
+import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface SettingItem {
@@ -28,7 +29,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { signOut } = useClerk();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { showAlert } = useCustomAlert();
 
   const handleBack = () => {
@@ -60,6 +61,8 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Detach this device's push token before the session goes away.
+              await unregisterPushNotificationsAsync(getToken);
               await signOut();
               router.replace('/(auth)/sign-in');
             } catch (err) {

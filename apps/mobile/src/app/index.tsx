@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,93 +10,86 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth, useUser } from '@clerk/expo';
+import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Colors, APP } from '../constants/theme';
-import { ApiService } from '../services/api';
+import { resolveAuthRoute } from '../services/authGate';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+/** How long the brand is held on screen, at minimum. Runs alongside the auth
+ *  check rather than before it — the old code slept first, then started the
+ *  request, so every cold start cost 2s plus the round-trip. */
+const MIN_SPLASH_MS = 1200;
+
+/** When the round-trip outlasts this, say so instead of spinning silently. */
+const SLOW_NETWORK_MS = 6000;
+
 export default function SplashScreen() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
-  const { user: clerkUser } = useUser();
   const router = useRouter();
   const [loadingText, setLoadingText] = useState('Verifying Credentials...');
-
-  const metadataStatus = (clerkUser?.publicMetadata as any)?.status as string | undefined;
+  // One decision per mount. Without this a re-render mid-flight could fire a
+  // second `router.replace`, and two racing redirects look exactly like a loop.
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
+    if (!isLoaded || hasRedirected.current) return;
+
     let isMounted = true;
+    let slowTimer: ReturnType<typeof setTimeout> | undefined;
 
-    async function checkAuthAndRedirect() {
-      if (!isLoaded) return;
-
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+    async function decide() {
+      const brandDelay = new Promise((resolve) => setTimeout(resolve, MIN_SPLASH_MS));
 
       if (!isSignedIn) {
-        if (isMounted) router.replace('/(auth)/sign-in');
+        await brandDelay;
+        if (!isMounted || hasRedirected.current) return;
+        hasRedirected.current = true;
+        router.replace('/(auth)/sign-in');
         return;
       }
 
+      let target: string;
       try {
+        const token = await getToken();
         if (isMounted) setLoadingText('Syncing Profile...');
-        const token = await getToken({ template: undefined });
 
-        if (!token) {
-          if (isMounted) router.replace('/(auth)/sign-in');
-          return;
+        slowTimer = setTimeout(() => {
+          if (isMounted) setLoadingText('Still connecting...');
+        }, SLOW_NETWORK_MS);
+
+        // `resolveAuthRoute` maps every outcome — bad status, blocked account,
+        // dead network, expired session — to a screen and never throws.
+        const result = await resolveAuthRoute(token);
+        if (result.reason) {
+          console.warn('[SPLASH]', result.reason);
         }
-
-        let dbUser = null;
-        let isNetworkError = false;
-        try {
-          dbUser = await Promise.race([
-            ApiService.getMe(token),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Network timeout')), 30000)
-            ),
-          ]);
-        } catch (netErr) {
-          console.warn('Backend connection error during splash:', netErr);
-          isNetworkError = true;
-        }
-
-        if (!isMounted) return;
-
-        if (isNetworkError && !dbUser) {
-          router.replace('/(auth)/network-error');
-          return;
-        }
-
-        if (dbUser) {
-          if (dbUser.status === 'DEACTIVATED' || dbUser.status === 'REJECTED') {
-            router.replace('/(auth)/deactivated');
-          } else if (dbUser.status === 'PENDING') {
-            router.replace('/(auth)/pending-approval');
-          } else {
-            router.replace('/(member)/home');
-          }
-        } else {
-          if (metadataStatus === 'DEACTIVATED' || metadataStatus === 'REJECTED') {
-            router.replace('/(auth)/deactivated');
-          } else if (metadataStatus === 'PENDING') {
-            router.replace('/(auth)/pending-approval');
-          } else {
-            router.replace('/(member)/home');
-          }
-        }
+        target = result.route;
       } catch (error) {
-        console.error('Splash auth guard error:', error);
-        if (isMounted) router.replace('/(auth)/sign-in');
+        // Only Clerk's `getToken` can land here.
+        console.warn('[SPLASH] Could not read session token', error);
+        target = '/(auth)/sign-in';
+      } finally {
+        if (slowTimer) clearTimeout(slowTimer);
       }
+
+      await brandDelay;
+      if (!isMounted || hasRedirected.current) return;
+      hasRedirected.current = true;
+      router.replace(target as Parameters<typeof router.replace>[0]);
     }
 
-    checkAuthAndRedirect();
+    void decide();
 
     return () => {
       isMounted = false;
+      if (slowTimer) clearTimeout(slowTimer);
     };
-  }, [metadataStatus, getToken, isLoaded, isSignedIn, router]);
+    // `getToken` and `router` are new objects on every render; depending on them
+    // would restart the auth check continuously.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, isSignedIn]);
 
   return (
     <SafeAreaView style={styles.container}>

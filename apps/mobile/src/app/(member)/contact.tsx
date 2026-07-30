@@ -90,7 +90,7 @@ export default function ContactScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.subtitle}>
-          We'd love to hear from you. Reach out to us through any of the channels below.
+          We&apos;d love to hear from you. Reach out to us through any of the channels below.
         </Text>
 
         {CONTACT_ITEMS.map((item, i) => (

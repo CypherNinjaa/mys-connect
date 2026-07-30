@@ -2,18 +2,58 @@ import { prisma } from '../utils/prisma';
 import { NotificationStatus, NotificationChannel } from '@prisma/client';
 
 export class NotificationService {
+  /**
+   * Bind an Expo push token to a user, taking it away from whoever held it.
+   *
+   * A phone can be shared or re-used, so the same token can arrive for a second
+   * account. Broadcasts read `User.expoPushToken`, so unless the previous owner
+   * is cleared first they keep receiving the new member's notifications.
+   */
   static async registerPushToken(userId: string, token: string, platform: string = 'android') {
     if (!token) return null;
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { expoPushToken: token },
-    });
+    return prisma.$transaction(async (tx) => {
+      // Detach the device from every other account before claiming it.
+      await tx.user.updateMany({
+        where: { expoPushToken: token, id: { not: userId } },
+        data: { expoPushToken: null },
+      });
 
-    return prisma.pushToken.upsert({
-      where: { token },
-      update: { userId, platform: platform || 'android', isActive: true, updatedAt: new Date() },
-      create: { userId, token, platform: platform || 'android', isActive: true },
+      await tx.pushToken.updateMany({
+        where: { token, userId: { not: userId } },
+        data: { isActive: false },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { expoPushToken: token },
+      });
+
+      return tx.pushToken.upsert({
+        where: { token },
+        update: { userId, platform: platform || 'android', isActive: true, updatedAt: new Date() },
+        create: { userId, token, platform: platform || 'android', isActive: true },
+      });
+    });
+  }
+
+  /**
+   * Release a push token on sign-out so the device stops receiving this
+   * member's notifications while another account uses it.
+   */
+  static async unregisterPushToken(userId: string, token: string) {
+    if (!token) return null;
+
+    return prisma.$transaction(async (tx) => {
+      await tx.user.updateMany({
+        where: { id: userId, expoPushToken: token },
+        data: { expoPushToken: null },
+      });
+
+      return tx.pushToken.updateMany({
+        where: { token, userId },
+        data: { isActive: false, updatedAt: new Date() },
+      });
     });
   }
 

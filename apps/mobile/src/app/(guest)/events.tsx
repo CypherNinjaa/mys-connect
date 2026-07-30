@@ -48,7 +48,13 @@ export default function GuestEventsScreen() {
   };
 
   useEffect(() => {
-    void fetchEvents();
+    // Awaited inside the effect rather than called from its body, so the loader's
+    // setState calls land after the first paint instead of cascading.
+    async function run() {
+      await fetchEvents();
+    }
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const now = new Date();

@@ -81,4 +81,22 @@ export class NotificationController {
       next(error);
     }
   }
+
+  static async unregisterPushToken(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new AppError('Unauthorized', 401);
+
+      const { token } = req.body;
+      if (!token) throw new AppError('Push token is required', 400);
+
+      await NotificationService.unregisterPushToken(userId, token);
+      res.json({
+        success: true,
+        message: 'Push token unregistered successfully',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
