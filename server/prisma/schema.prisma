@@ -120,7 +120,8 @@ model User {
 
   // Relations
   profile       Profile?
-  eventRSVPs    EventRSVP[]
+  eventRSVPs    EventRSVP[]    @relation("EventRSVPAttendee")
+  scannedRSVPs  EventRSVP[]    @relation("EventRSVPScannedBy")
   notifications Notification[]
   noticeReads   NoticeRead[]
 
@@ -132,38 +133,38 @@ model User {
 
 /// Extended member profile — personal, professional info
 model Profile {
-  id              String      @id @default(cuid())
-  userId          String      @unique
-  
+  id     String @id @default(cuid())
+  userId String @unique
+
   // Personal
-  firstName       String?
-  lastName        String?
-  displayName     String?
-  dateOfBirth     DateTime?
-  gender          Gender?
-  bloodGroup      BloodGroup?
-  avatarUrl       String?
+  firstName   String?
+  lastName    String?
+  displayName String?
+  dateOfBirth DateTime?
+  gender      Gender?
+  bloodGroup  BloodGroup?
+  avatarUrl   String?
 
   // Contact
-  address         String?
-  cityId          String?
-  state           String?     @default("Jharkhand")
-  pinCode         String?
+  address String?
+  cityId  String?
+  state   String? @default("Jharkhand")
+  pinCode String?
 
   // Professional
-  occupation      String?
-  organization    String?
-  designation     String?
+  occupation   String?
+  organization String?
+  designation  String?
 
   // Social
-  bio             String?
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  bio String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  city            City?       @relation(fields: [cityId], references: [id])
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city City? @relation(fields: [cityId], references: [id])
 
   @@index([cityId])
   @@map("profiles")
@@ -171,72 +172,78 @@ model Profile {
 
 /// City/Location for filtering members
 model City {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  state     String    @default("Jharkhand")
-  isActive  Boolean   @default(true)
-  sortOrder Int       @default(0)
-  createdAt DateTime  @default(now())
+  id        String   @id @default(cuid())
+  name      String   @unique
+  state     String   @default("Jharkhand")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 
   // Relations
-  profiles  Profile[]
-  events    Event[]
+  profiles Profile[]
+  events   Event[]
 
   @@map("cities")
 }
 
 /// Events — managed by admins, visible to members
 model Event {
-  id                  String      @id @default(cuid())
-  title               String
-  description         String
-  shortDesc           String?
-  
+  id          String  @id @default(cuid())
+  title       String
+  description String
+  shortDesc   String?
+
   // Date & Time
-  startDate           DateTime
-  endDate             DateTime?
-  startTime           String?
-  endTime             String?
-  isAllDay            Boolean     @default(false)
+  startDate            DateTime
+  endDate              DateTime?
+  startTime            String?
+  endTime              String?
+  isAllDay             Boolean   @default(false)
   registrationDeadline DateTime?
-  
+
   // Location
-  venue               String?
-  address             String?
-  cityId              String?
-  mapUrl              String?
-  isOnline            Boolean     @default(false)
-  meetingLink         String?
-  latitude            Float?
-  longitude           Float?
-  
+  venue       String?
+  address     String?
+  cityId      String?
+  mapUrl      String?
+  isOnline    Boolean @default(false)
+  meetingLink String?
+  latitude    Float?
+  longitude   Float?
+
   // Categorization & Media
-  chapter             String?     @default("Ranchi")
-  category            String?     @default("General")
-  coverImageUrl       String?
-  
+  chapter       String? @default("Ranchi")
+  category      String? @default("General")
+  coverImageUrl String?
+
   // Status & Registration Rules
-  status              EventStatus @default(DRAFT)
-  isPublic            Boolean     @default(true)
-  maxAttendees        Int?
-  allowWaitlist       Boolean     @default(false)
-  registrationOpen    Boolean     @default(true)
-  
+  status           EventStatus @default(DRAFT)
+  isPublic         Boolean     @default(true)
+  maxAttendees     Int?
+  allowWaitlist    Boolean     @default(false)
+  registrationOpen Boolean     @default(true)
+
+  /// "QR life" — how many times a single ticket may be scanned at this event.
+  /// Admins raise this for multi-day / re-entry events; new registrations inherit
+  /// it as their own maxScans so raising it later never retro-invalidates a
+  /// ticket that was already handed out with a different quota.
+  qrScanLimit Int @default(1)
+
   // Organizer Contact & SEO
-  contactName         String?
-  contactPhone        String?
-  shareImage          String?
-  shareDescription    String?
-  
+  contactName      String?
+  contactPhone     String?
+  shareImage       String?
+  shareDescription String?
+
   // Admin
-  createdById         String
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  city                City?       @relation(fields: [cityId], references: [id])
-  rsvps               EventRSVP[]
-  photos              EventPhoto[]
+  city   City?        @relation(fields: [cityId], references: [id])
+  rsvps  EventRSVP[]
+  photos EventPhoto[]
 
   @@index([startDate])
   @@index([status])
@@ -246,19 +253,39 @@ model Event {
 
 /// RSVP / Registration tracking for events
 model EventRSVP {
-  id        String     @id @default(cuid())
-  userId    String
-  eventId   String
-  status    RSVPStatus @default(REGISTERED)
-  note      String?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id      String     @id @default(cuid())
+  userId  String
+  eventId String
+  status  RSVPStatus @default(REGISTERED)
+  note    String?
+
+  // Ticket — human-readable code that is also the QR payload subject.
+  // Nullable only so pre-existing rows can be backfilled; every new
+  // registration is issued one. Built from an unambiguous alphabet
+  // (no O/0/I/1/L) so it can be read aloud or typed at the gate.
+  registrationCode String? @unique
+
+  // Entry / check-in tracking. maxScans is snapshotted from Event.qrScanLimit
+  // when the ticket is issued, so an admin raising the event-level limit later
+  // never silently changes the quota on a ticket already in someone's hands.
+  scanCount   Int       @default(0)
+  maxScans    Int       @default(1)
+  firstScanAt DateTime?
+  lastScanAt  DateTime?
+  scannedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User  @relation("EventRSVPAttendee", fields: [userId], references: [id], onDelete: Cascade)
+  event     Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  scannedBy User? @relation("EventRSVPScannedBy", fields: [scannedById], references: [id], onDelete: SetNull)
 
   @@unique([userId, eventId])
+  @@index([registrationCode])
+  @@index([eventId, status])
+  @@index([userId, status])
   @@map("event_rsvps")
 }
 
@@ -272,7 +299,7 @@ model EventPhoto {
   createdAt DateTime @default(now())
 
   // Relations
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId])
   @@map("event_photos")
@@ -280,29 +307,29 @@ model EventPhoto {
 
 /// Notices/Announcements — admin-published
 model Notice {
-  id            String         @id @default(cuid())
-  title         String
-  content       String
-  type          NoticeType     @default(GENERAL)
-  priority      NoticePriority @default(MEDIUM)
-  
+  id       String         @id @default(cuid())
+  title    String
+  content  String
+  type     NoticeType     @default(GENERAL)
+  priority NoticePriority @default(MEDIUM)
+
   // Scheduling
-  publishedAt   DateTime?
-  expiresAt     DateTime?
-  isPublished   Boolean        @default(false)
-  isPinned      Boolean        @default(false)
-  
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  isPublished Boolean   @default(false)
+  isPinned    Boolean   @default(false)
+
   // Media
   imageUrl      String?
   attachmentUrl String?
-  
+
   // Admin
-  createdById   String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  noticeReads   NoticeRead[]
+  noticeReads NoticeRead[]
 
   @@index([isPublished, publishedAt])
   @@index([type])
@@ -312,13 +339,13 @@ model Notice {
 
 /// Tracking notice reads per user
 model NoticeRead {
-  id        String   @id @default(cuid())
-  noticeId  String
-  userId    String
-  readAt    DateTime @default(now())
+  id       String   @id @default(cuid())
+  noticeId String
+  userId   String
+  readAt   DateTime @default(now())
 
-  notice    Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notice Notice @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([noticeId, userId])
   @@map("notice_reads")
@@ -335,12 +362,12 @@ model Album {
   sortOrder     Int           @default(0)
 
   // Admin
-  createdById   String
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  photos        AlbumPhoto[]
+  photos AlbumPhoto[]
 
   @@index([isPublished])
   @@index([category])
@@ -358,7 +385,7 @@ model AlbumPhoto {
   createdAt    DateTime @default(now())
 
   // Relations
-  album        Album    @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  album Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
 
   @@index([albumId])
   @@map("album_photos")
@@ -366,22 +393,22 @@ model AlbumPhoto {
 
 /// Push notification records
 model Notification {
-  id          String              @id @default(cuid())
-  userId      String
-  title       String
-  body        String
-  data        Json?
-  channel     NotificationChannel @default(PUSH)
-  status      NotificationStatus  @default(PENDING)
-  
+  id      String              @id @default(cuid())
+  userId  String
+  title   String
+  body    String
+  data    Json?
+  channel NotificationChannel @default(PUSH)
+  status  NotificationStatus  @default(PENDING)
+
   // Tracking
-  sentAt      DateTime?
-  readAt      DateTime?
-  
-  createdAt   DateTime            @default(now())
+  sentAt DateTime?
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
 
   // Relations
-  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
   @@index([createdAt])
@@ -393,7 +420,7 @@ model PushToken {
   id        String   @id @default(cuid())
   userId    String
   token     String   @unique
-  platform  String   // 'ios' | 'android'
+  platform  String // 'ios' | 'android'
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -433,14 +460,14 @@ model AppSetting {
 
 /// Audit log — tracks admin actions
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String
-  action     String
-  entity     String
-  entityId   String?
-  metadata   Json?
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([entity, entityId])

@@ -108,6 +108,48 @@ export interface RegisterProfileData {
   bio?: string;
 }
 
+/** The event fields carried alongside a ticket by `GET /events/my-registrations`. */
+export interface RegistrationEvent {
+  id: string;
+  title: string;
+  shortDesc?: string | null;
+  /** ISO strings — Prisma `DateTime` columns serialise to JSON as text. */
+  startDate: string;
+  endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  venue?: string | null;
+  address?: string | null;
+  isOnline: boolean;
+  meetingLink?: string | null;
+  coverImageUrl?: string | null;
+  status: string;
+  city?: MemberCity | null;
+}
+
+/**
+ * One event ticket held by the signed-in member.
+ *
+ * `qrDataUrl` is a ready-to-render PNG data URI built on the server, so the app
+ * draws it with a plain `<Image>` instead of a native SVG renderer.
+ * `registrationCode` is the same identity in spoken/typed form, used at the gate
+ * when scanning fails. Both are null only for rows predating ticketing.
+ */
+export interface EventRegistration {
+  id: string;
+  eventId: string;
+  status: 'REGISTERED' | 'CANCELLED' | 'ATTENDED';
+  registrationCode: string | null;
+  qrDataUrl: string | null;
+  scanCount: number;
+  maxScans: number;
+  scansRemaining: number;
+  firstScanAt: string | null;
+  lastScanAt: string | null;
+  registeredAt: string;
+  event: RegistrationEvent;
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = DEFAULT_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
@@ -359,6 +401,21 @@ export class ApiService {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error?.message || 'Failed to cancel registration');
     return data.data;
+  }
+
+  /**
+   * Every event ticket held by the signed-in member, newest event first.
+   *
+   * One request returns the codes and the rendered QR images together, so the
+   * My Tickets tab does not fan out per registration.
+   */
+  static async getMyRegistrations(token: string): Promise<EventRegistration[]> {
+    const res = await fetchWithTimeout(`${API.baseUrl}/events/my-registrations`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await parseJson(res, 'Failed to fetch your tickets');
+    return (data?.data as { registrations?: EventRegistration[] })?.registrations ?? [];
   }
 
   /**

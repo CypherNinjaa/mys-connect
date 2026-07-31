@@ -1,6 +1,31 @@
 import { prisma } from '../utils/prisma';
-import { EventStatus, RSVPStatus } from '@prisma/client';
+import { EventStatus, RSVPStatus, Prisma } from '@prisma/client';
 import { AppError } from '../middleware/errorHandler';
+import { buildQrPayload, generateRegistrationCode } from '../utils/ticket';
+import QRCode from 'qrcode';
+
+/** Prisma's error code for a violated unique index. */
+const UNIQUE_VIOLATION = 'P2002';
+
+/** Attempts before giving up on finding a free registration code. */
+const CODE_MINT_ATTEMPTS = 5;
+
+/**
+ * Renders a ticket's QR as a PNG data URI.
+ *
+ * Generated server-side and sent as a data URI so the mobile app can draw it
+ * with a plain `<Image>`: the app is a bare/prebuild Expo project, and pulling
+ * in a native SVG renderer just for this would force a full Android rebuild.
+ */
+function renderQrDataUrl(eventId: string, code: string): Promise<string> {
+  return QRCode.toDataURL(buildQrPayload(eventId, code), {
+    errorCorrectionLevel: 'M',
+    margin: 1,
+    width: 512,
+    color: { dark: '#1A202C', light: '#FFFFFF' },
+  });
+}
+
 
 export class EventService {
   static async getEvents(query: {
@@ -134,21 +159,56 @@ export class EventService {
       }
     }
 
-    const rsvp = await prisma.eventRSVP.upsert({
-      where: {
-        userId_eventId: { userId, eventId },
-      },
-      update: {
-        status: RSVPStatus.REGISTERED,
-      },
-      create: {
-        userId,
-        eventId,
-        status: RSVPStatus.REGISTERED,
-      },
+    // Re-registering after a cancellation must not mint a second code: the
+    // member may already have the old ticket saved or screenshotted, and
+    // rotating it would silently invalidate what is in their hands.
+    const existing = await prisma.eventRSVP.findUnique({
+      where: { userId_eventId: { userId, eventId } },
+      select: { registrationCode: true },
     });
 
-    return rsvp;
+    if (existing?.registrationCode) {
+      const rsvp = await prisma.eventRSVP.update({
+        where: { userId_eventId: { userId, eventId } },
+        data: { status: RSVPStatus.REGISTERED },
+      });
+      return rsvp;
+    }
+
+    // `maxScans` is snapshotted from the event's current QR life rather than
+    // read live at scan time, so an admin raising the event limit later cannot
+    // retroactively change the quota on a ticket already issued.
+    for (let attempt = 0; attempt < CODE_MINT_ATTEMPTS; attempt += 1) {
+      const registrationCode = generateRegistrationCode();
+      try {
+        return await prisma.eventRSVP.upsert({
+          where: { userId_eventId: { userId, eventId } },
+          update: {
+            status: RSVPStatus.REGISTERED,
+            registrationCode,
+            maxScans: event.qrScanLimit,
+          },
+          create: {
+            userId,
+            eventId,
+            status: RSVPStatus.REGISTERED,
+            registrationCode,
+            maxScans: event.qrScanLimit,
+          },
+        });
+      } catch (error) {
+        const isCodeCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === UNIQUE_VIOLATION &&
+          String(error.meta?.target ?? '').includes('registrationCode');
+
+        if (!isCodeCollision) throw error;
+        // Drew an already-issued code — vanishingly unlikely, but the unique
+        // index is the real guarantee, so just draw again.
+      }
+    }
+
+    throw new AppError('Could not issue a ticket code. Please try again.', 500);
   }
 
   static async cancelRegistration(userId: string, eventId: string) {
@@ -160,5 +220,71 @@ export class EventService {
         status: RSVPStatus.CANCELLED,
       },
     });
+  }
+
+  /**
+   * Every ticket the member currently holds, newest event first.
+   *
+   * Cancelled RSVPs are excluded — a cancelled ticket is not a ticket — but
+   * `ATTENDED` ones are kept so a member can still show proof of entry after
+   * being scanned in. Each row carries its QR image, so the tickets tab needs
+   * exactly one request.
+   */
+  static async getMyRegistrations(userId: string) {
+    const rsvps = await prisma.eventRSVP.findMany({
+      where: {
+        userId,
+        status: { in: [RSVPStatus.REGISTERED, RSVPStatus.ATTENDED] },
+      },
+      orderBy: { event: { startDate: 'desc' } },
+      take: 100,
+      include: {
+        event: {
+          include: { city: true },
+        },
+      },
+    });
+
+    const registrations = await Promise.all(
+      rsvps.map(async (rsvp) => {
+        // Pre-existing rows from before ticketing have no code yet; they are
+        // backfilled by script, but the tab must not crash on one meanwhile.
+        const qrDataUrl = rsvp.registrationCode
+          ? await renderQrDataUrl(rsvp.eventId, rsvp.registrationCode)
+          : null;
+
+        return {
+          id: rsvp.id,
+          eventId: rsvp.eventId,
+          status: rsvp.status,
+          registrationCode: rsvp.registrationCode,
+          qrDataUrl,
+          scanCount: rsvp.scanCount,
+          maxScans: rsvp.maxScans,
+          scansRemaining: Math.max(0, rsvp.maxScans - rsvp.scanCount),
+          firstScanAt: rsvp.firstScanAt,
+          lastScanAt: rsvp.lastScanAt,
+          registeredAt: rsvp.createdAt,
+          event: {
+            id: rsvp.event.id,
+            title: rsvp.event.title,
+            shortDesc: rsvp.event.shortDesc,
+            startDate: rsvp.event.startDate,
+            endDate: rsvp.event.endDate,
+            startTime: rsvp.event.startTime,
+            endTime: rsvp.event.endTime,
+            venue: rsvp.event.venue,
+            address: rsvp.event.address,
+            isOnline: rsvp.event.isOnline,
+            meetingLink: rsvp.event.meetingLink,
+            coverImageUrl: rsvp.event.coverImageUrl,
+            status: rsvp.event.status,
+            city: rsvp.event.city ? { id: rsvp.event.city.id, name: rsvp.event.city.name } : null,
+          },
+        };
+      })
+    );
+
+    return { registrations };
   }
 }

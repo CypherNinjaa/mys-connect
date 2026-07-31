@@ -859,6 +859,10 @@ export class AdminController {
   }
 }
 
+/** A ticket must be scannable at least once; the ceiling is a typo guard. */
+const QR_SCAN_LIMIT_MIN = 1;
+const QR_SCAN_LIMIT_MAX = 100;
+
 function normalizeEventPayload(body: any) {
   const data = { ...body };
   if (data.startDate && typeof data.startDate === 'string') data.startDate = new Date(data.startDate);
@@ -876,6 +880,16 @@ function normalizeEventPayload(body: any) {
 
   if (data.maxAttendees !== undefined && data.maxAttendees !== null && data.maxAttendees !== '') {
     data.maxAttendees = parseInt(String(data.maxAttendees), 10);
+  }
+  // How many times one ticket may be scanned at the gate. Arrives as a string
+  // from the multipart form; drop it rather than forward NaN when it is junk.
+  if ('qrScanLimit' in data) {
+    const parsed = parseInt(String(data.qrScanLimit), 10);
+    if (Number.isFinite(parsed)) {
+      data.qrScanLimit = Math.min(Math.max(parsed, QR_SCAN_LIMIT_MIN), QR_SCAN_LIMIT_MAX);
+    } else {
+      delete data.qrScanLimit;
+    }
   }
   if (data.latitude !== undefined && data.latitude !== null && data.latitude !== '') {
     data.latitude = parseFloat(String(data.latitude));

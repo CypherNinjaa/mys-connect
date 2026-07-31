@@ -864,6 +864,7 @@ export class AdminService {
       maxAttendees?: number;
       allowWaitlist?: boolean;
       registrationOpen?: boolean;
+      qrScanLimit?: number;
       contactName?: string;
       contactPhone?: string;
       shareImage?: string;
@@ -898,6 +899,8 @@ export class AdminService {
         maxAttendees: data.maxAttendees,
         allowWaitlist: data.allowWaitlist ?? false,
         registrationOpen: data.registrationOpen ?? true,
+        // Entries per ticket. Omitted means one scan, matching the schema default.
+        qrScanLimit: data.qrScanLimit ?? 1,
         contactName: data.contactName,
         contactPhone: data.contactPhone,
         shareImage: data.shareImage,
@@ -961,6 +964,7 @@ export class AdminService {
       maxAttendees?: number;
       allowWaitlist?: boolean;
       registrationOpen?: boolean;
+      qrScanLimit?: number;
       contactName?: string;
       contactPhone?: string;
       shareImage?: string;

@@ -54,6 +54,21 @@ export class EventController {
     }
   }
 
+  static async getMyRegistrations(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) throw new AppError('Unauthorized', 401);
+
+      const data = await EventService.getMyRegistrations(userId);
+      res.json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async cancelRegistration(req: Request, res: Response, next: NextFunction) {
     try {
       const id = String(req.params.id);

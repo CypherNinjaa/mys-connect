@@ -18,7 +18,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@clerk/expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
-import { ApiService } from '../../services/api';
+import { ApiService, EventRegistration } from '../../services/api';
+import { RegistrationCode } from '../../components/ui/RegistrationCode';
+import { saveQrToDevice } from '../../utils/qrDownload';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function EventDetailScreen() {
@@ -34,6 +36,10 @@ export default function EventDetailScreen() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  /** The real ticket for this event, fetched after a successful registration. */
+  const [ticket, setTicket] = useState<EventRegistration | null>(null);
+  const [ticketLoading, setTicketLoading] = useState(false);
+  const [savingQr, setSavingQr] = useState(false);
 
   // Fix Back Navigation to cleanly return to calling screen / events tab
   const handleBack = () => {
@@ -69,6 +75,50 @@ export default function EventDetailScreen() {
     if (id) void fetchEvent();
   }, [id]);
 
+  /**
+   * Pull this event's ticket out of the member's registration list.
+   *
+   * The QR image and the registration code are only served by
+   * `/events/my-registrations`, so they are fetched once the member actually
+   * holds a ticket rather than on every visit to this screen.
+   */
+  const loadTicket = async (authToken: string) => {
+    setTicketLoading(true);
+    try {
+      const list = await ApiService.getMyRegistrations(authToken);
+      setTicket(list.find((reg) => reg.eventId === id) ?? null);
+    } catch (err) {
+      console.error('Fetch ticket error:', err);
+      setTicket(null);
+    } finally {
+      setTicketLoading(false);
+    }
+  };
+
+  const handleViewTicket = async () => {
+    setShowQRModal(true);
+    if (ticket) return;
+
+    const token = await getToken();
+    if (token) await loadTicket(token);
+  };
+
+  const handleSaveQr = async () => {
+    if (savingQr) return;
+    setSavingQr(true);
+    try {
+      await saveQrToDevice(ticket?.qrDataUrl, ticket?.registrationCode);
+    } catch (err) {
+      showAlert({
+        title: 'Download Failed',
+        message: err instanceof Error ? err.message : 'Could not save the QR code.',
+        type: 'error',
+      });
+    } finally {
+      setSavingQr(false);
+    }
+  };
+
   const handleRegister = async () => {
     try {
       setRegistering(true);
@@ -92,6 +142,7 @@ export default function EventDetailScreen() {
                 try {
                   await ApiService.cancelEventRegistration(token, id);
                   setIsRegistered(false);
+                  setTicket(null);
                   showAlert({ title: 'Registration Cancelled', message: 'Your registration has been cancelled.', type: 'info' });
                 } catch (err: any) {
                   showAlert({ title: 'Error', message: err.message || 'Failed to cancel registration.', type: 'error' });
@@ -104,6 +155,7 @@ export default function EventDetailScreen() {
         await ApiService.registerForEvent(token, id);
         setIsRegistered(true);
         setShowQRModal(true);
+        await loadTicket(token);
       }
     } catch (err: any) {
       showAlert({ title: 'Error', message: err.message || 'Failed to register.', type: 'error' });
@@ -289,8 +341,25 @@ export default function EventDetailScreen() {
       {/* Sticky Bottom Action Register Bar */}
       {!isPast && (
         <View style={[styles.stickyBottomBar, { paddingBottom: insets.bottom + 12 }]}>
+          {/* An already-registered member needs their pass more often than the
+              cancel button, so it leads the row. */}
+          {isRegistered && (
+            <TouchableOpacity
+              style={styles.ticketButton}
+              onPress={handleViewTicket}
+              activeOpacity={0.88}
+            >
+              <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.registerButtonText}>My Ticket</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
-            style={[styles.registerButton, isRegistered && styles.unregisterButton]}
+            style={[
+              styles.registerButton,
+              isRegistered && styles.unregisterButton,
+              isRegistered && styles.compactButton,
+            ]}
             onPress={handleRegister}
             disabled={registering}
             activeOpacity={0.88}
@@ -306,7 +375,7 @@ export default function EventDetailScreen() {
                   style={{ marginRight: 8 }}
                 />
                 <Text style={styles.registerButtonText}>
-                  {isRegistered ? 'Cancel Registration' : 'Register Now'}
+                  {isRegistered ? 'Cancel' : 'Register Now'}
                 </Text>
               </>
             )}
@@ -320,18 +389,63 @@ export default function EventDetailScreen() {
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Ionicons name="checkmark-circle-sharp" size={48} color="#2F855A" />
-              <Text style={styles.modalTitle}>Registration Confirmed! 🎉</Text>
+              <Text style={styles.modalTitle}>You&apos;re Registered! 🎉</Text>
               <Text style={styles.modalSub}>Show this QR code entry pass at the event entrance</Text>
             </View>
 
-            {/* QR Mockup Box */}
             <View style={styles.qrBox}>
-              <Ionicons name="qr-code" size={160} color="#1A202C" />
-              <Text style={styles.qrPassId}>PASS ID: MYS-{event.id.slice(-6).toUpperCase()}</Text>
+              {ticketLoading ? (
+                <View style={styles.qrPlaceholder}>
+                  <ActivityIndicator size="large" color="#6B1D2A" />
+                  <Text style={styles.qrPlaceholderText}>Preparing your pass…</Text>
+                </View>
+              ) : ticket?.qrDataUrl ? (
+                <Image
+                  source={{ uri: ticket.qrDataUrl }}
+                  style={styles.qrImage}
+                  resizeMode="contain"
+                  accessibilityLabel="Your event entry QR code"
+                />
+              ) : (
+                <View style={styles.qrPlaceholder}>
+                  <Ionicons name="qr-code-outline" size={64} color="#CBD5E0" />
+                  <Text style={styles.qrPlaceholderText}>
+                    Your pass will appear under My Tickets.
+                  </Text>
+                </View>
+              )}
+
+              {ticket?.registrationCode ? (
+                <>
+                  <Text style={styles.qrPassLabel}>Registration Code</Text>
+                  <RegistrationCode code={ticket.registrationCode} size="sm" />
+                  <Text style={styles.qrPassHint}>
+                    Read this out if the scanner does not work.
+                  </Text>
+                </>
+              ) : null}
             </View>
 
+            {ticket?.qrDataUrl ? (
+              <TouchableOpacity
+                style={styles.modalSecondaryBtn}
+                onPress={handleSaveQr}
+                disabled={savingQr}
+                activeOpacity={0.85}
+              >
+                {savingQr ? (
+                  <ActivityIndicator size="small" color="#6B1D2A" />
+                ) : (
+                  <>
+                    <Ionicons name="download-outline" size={17} color="#6B1D2A" style={{ marginRight: 6 }} />
+                    <Text style={styles.modalSecondaryText}>Download QR</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
+
             <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowQRModal(false)}>
-              <Text style={styles.modalCloseText}>Done & Save Pass</Text>
+              <Text style={styles.modalCloseText}>Done</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -461,11 +575,20 @@ const styles = StyleSheet.create({
     position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 40,
     backgroundColor: '#FFFFFF', paddingHorizontal: 16, paddingTop: 12,
     borderTopWidth: 1, borderTopColor: '#E2E8F0', elevation: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
   },
   registerButton: {
+    flex: 1,
     backgroundColor: '#6B1D2A', height: 48, borderRadius: 14,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', elevation: 4,
   },
+  ticketButton: {
+    flex: 1.3,
+    backgroundColor: '#6B1D2A', height: 48, borderRadius: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', elevation: 4,
+  },
+  // Cancel yields room to the ticket button when both are on screen.
+  compactButton: { flex: 0.9 },
   unregisterButton: { backgroundColor: '#C53030' },
   registerButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
 
@@ -474,8 +597,14 @@ const styles = StyleSheet.create({
   modalHeader: { alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#1A202C', marginTop: 10 },
   modalSub: { fontSize: 12, color: '#718096', textAlign: 'center', marginTop: 4 },
-  qrBox: { padding: 16, backgroundColor: '#F8F9FA', borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', marginVertical: 12 },
-  qrPassId: { fontSize: 11, fontWeight: '800', color: '#6B1D2A', marginTop: 10, letterSpacing: 1 },
+  qrBox: { padding: 16, backgroundColor: '#F8F9FA', borderRadius: 18, borderWidth: 1, borderColor: '#E2E8F0', alignItems: 'center', marginVertical: 12, alignSelf: 'stretch' },
+  qrImage: { width: 190, height: 190 },
+  qrPlaceholder: { width: 190, height: 190, alignItems: 'center', justifyContent: 'center' },
+  qrPlaceholderText: { fontSize: 11.5, color: '#A0AEC0', fontWeight: '600', marginTop: 10, textAlign: 'center', paddingHorizontal: 12, lineHeight: 16 },
+  qrPassLabel: { fontSize: 10, fontWeight: '700', color: '#A0AEC0', letterSpacing: 1, textTransform: 'uppercase', marginTop: 14, marginBottom: 6 },
+  qrPassHint: { fontSize: 11, color: '#718096', marginTop: 8, textAlign: 'center' },
+  modalSecondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', borderWidth: 1.5, borderColor: '#6B1D2A', paddingVertical: 12, borderRadius: 14 },
+  modalSecondaryText: { color: '#6B1D2A', fontSize: 13.5, fontWeight: '800' },
   modalCloseBtn: { width: '100%', backgroundColor: '#6B1D2A', paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 12 },
   modalCloseText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 });

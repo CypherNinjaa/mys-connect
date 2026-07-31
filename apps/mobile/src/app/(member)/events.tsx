@@ -16,18 +16,56 @@ import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useCustomAlert } from '../../context/CustomAlertContext';
-import { ApiService } from '../../services/api';
+import { ApiService, EventRegistration } from '../../services/api';
 import { EventCacheManager } from '../../services/eventCacheManager';
 import { EventCard, EventItemData } from '../../components/events/EventCard';
+import { TicketCard } from '../../components/events/TicketCard';
 import { EventCardSkeleton } from '../../components/ui/SkeletonLoader';
+import { saveQrToDevice } from '../../utils/qrDownload';
 
-type TabStatus = 'UPCOMING' | 'ONGOING' | 'COMPLETED';
+/** The three tabs that filter the cached event list. */
+type EventTabStatus = 'UPCOMING' | 'ONGOING' | 'COMPLETED';
+
+/** `MY_TICKETS` reads from its own endpoint rather than the event cache. */
+type TabStatus = EventTabStatus | 'MY_TICKETS';
 
 const TABS: { label: string; status: TabStatus }[] = [
   { label: 'Upcoming', status: 'UPCOMING' },
   { label: 'Ongoing', status: 'ONGOING' },
   { label: 'Completed', status: 'COMPLETED' },
+  { label: 'My Tickets', status: 'MY_TICKETS' },
 ];
+
+/**
+ * How long a fetched ticket list is trusted before the tab refetches.
+ *
+ * Kept short because the scan count on a ticket changes at the gate, and long
+ * enough that flicking between tabs does not fire a request per tap.
+ */
+const TICKETS_TTL_MS = 60_000;
+
+const EMPTY_COPY: Record<TabStatus, { title: string; sub: string; icon: 'calendar-outline' | 'ticket-outline' }> = {
+  UPCOMING: {
+    title: 'No upcoming events',
+    sub: 'There are currently no upcoming community events.',
+    icon: 'calendar-outline',
+  },
+  ONGOING: {
+    title: 'Nothing happening right now',
+    sub: 'No community event is currently in progress.',
+    icon: 'calendar-outline',
+  },
+  COMPLETED: {
+    title: 'No past events',
+    sub: 'Completed community events will be listed here.',
+    icon: 'calendar-outline',
+  },
+  MY_TICKETS: {
+    title: 'No tickets yet',
+    sub: 'Register for an event and your QR code and registration code will appear here.',
+    icon: 'ticket-outline',
+  },
+};
 
 export default function EventsScreen() {
   const { getToken, isSignedIn } = useAuth();
@@ -45,6 +83,14 @@ export default function EventsScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cooldownMessage, setCooldownMessage] = useState<string | null>(null);
   const [registeringEventId, setRegisteringEventId] = useState<string | null>(null);
+
+  // My Tickets — fetched separately from the event cache, since a ticket carries
+  // a rendered QR image and a code that must never be served from a stale copy.
+  const [tickets, setTickets] = useState<EventRegistration[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketsError, setTicketsError] = useState<string | null>(null);
+  /** Epoch ms of the last successful ticket fetch; null means never loaded. */
+  const [ticketsFetchedAt, setTicketsFetchedAt] = useState<number | null>(null);
 
   // Android Hardware Back Navigation Handler
   useEffect(() => {
@@ -128,8 +174,63 @@ export default function EventsScreen() {
     void run();
   }, [loadEventsData]);
 
+  // My Tickets loader — deliberately not cached to disk. A ticket's scan count
+  // changes at the gate, so the number of entries left has to come from the
+  // server every time the member opens the tab.
+  const loadTickets = useCallback(async () => {
+    if (!isSignedIn) {
+      setTickets([]);
+      setTicketsFetchedAt(Date.now());
+      setTicketsError('Sign in to see your event tickets.');
+      return;
+    }
+
+    setTicketsLoading(true);
+    setTicketsError(null);
+
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Authentication token unavailable');
+
+      const list = await ApiService.getMyRegistrations(token);
+      setTickets(list);
+      setTicketsFetchedAt(Date.now());
+    } catch (err) {
+      console.error('Fetch tickets error:', err);
+      setTicketsError(err instanceof Error ? err.message : 'Could not load your tickets');
+    } finally {
+      setTicketsLoading(false);
+      setRefreshing(false);
+    }
+  }, [getToken, isSignedIn]);
+
+  useEffect(() => {
+    if (activeTab !== 'MY_TICKETS') return;
+
+    // A short window rather than a load-once flag: registering from the event
+    // detail screen also changes this list, and that screen has no way to tell
+    // this one. Re-opening the tab a minute later picks the change up.
+    const isFresh = ticketsFetchedAt !== null && Date.now() - ticketsFetchedAt < TICKETS_TTL_MS;
+    if (isFresh) return;
+
+    // Same shape as the events loader above — declared inside the effect so the
+    // setState calls are not reached from an outer callback.
+    async function run() {
+      await loadTickets();
+    }
+    void run();
+  }, [activeTab, ticketsFetchedAt, loadTickets]);
+
   // Rate-Limited Manual Pull-to-Refresh
   const handleRefresh = () => {
+    // Tickets bypass the event-cache cooldown: the scan count is the point of
+    // pulling to refresh, and it is a single lightweight request.
+    if (activeTab === 'MY_TICKETS') {
+      setRefreshing(true);
+      void loadTickets();
+      return;
+    }
+
     const { allowed, remainingSeconds } = EventCacheManager.canManualRefresh();
     if (!allowed) {
       setRefreshing(false);
@@ -144,6 +245,8 @@ export default function EventsScreen() {
 
   // Client-side filtering by active tab and search query (0 API requests)
   const filteredEvents = useMemo(() => {
+    if (activeTab === 'MY_TICKETS') return [];
+
     const now = new Date();
 
     return allEvents.filter((evt) => {
@@ -175,6 +278,35 @@ export default function EventsScreen() {
     });
   }, [allEvents, activeTab, debouncedQuery]);
 
+  // The header search box stays live on the tickets tab, matching by event.
+  const filteredTickets = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return tickets;
+
+    return tickets.filter((reg) => {
+      const titleMatch = reg.event.title?.toLowerCase().includes(q);
+      const venueMatch = reg.event.venue?.toLowerCase().includes(q);
+      const cityMatch = reg.event.city?.name?.toLowerCase().includes(q);
+      const codeMatch = reg.registrationCode?.toLowerCase().includes(q);
+      return titleMatch || venueMatch || cityMatch || codeMatch;
+    });
+  }, [tickets, debouncedQuery]);
+
+  const handleDownloadQr = useCallback(
+    async (registration: EventRegistration) => {
+      try {
+        await saveQrToDevice(registration.qrDataUrl, registration.registrationCode);
+      } catch (err) {
+        showAlert({
+          title: 'Download Failed',
+          message: err instanceof Error ? err.message : 'Could not save the QR code.',
+          type: 'error',
+        });
+      }
+    },
+    [showAlert]
+  );
+
   // Optimistic Registration Toggle
   const handleRegisterToggle = async (event: EventItemData) => {
     if (!isSignedIn) {
@@ -204,6 +336,11 @@ export default function EventsScreen() {
         await ApiService.cancelEventRegistration(token, event.id);
         showAlert({ title: 'Registration Cancelled', message: `You unregistered from ${event.title}`, type: 'info' });
       }
+
+      // The ticket list just changed — drop the freshness stamp so the next
+      // visit to My Tickets refetches. A member who never opens that tab pays
+      // nothing for this.
+      setTicketsFetchedAt(null);
     } catch (err: any) {
       console.error('Registration toggle error:', err);
       // Revert Optimistic Update on failure
@@ -218,6 +355,13 @@ export default function EventsScreen() {
   };
 
   const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 12;
+
+  const isTicketsTab = activeTab === 'MY_TICKETS';
+  const emptyCopy = EMPTY_COPY[activeTab];
+
+  // EventCard only knows the three event states; on the tickets tab its list is
+  // empty anyway, so COMPLETED is a harmless stand-in that keeps the prop typed.
+  const eventTabStatus: EventTabStatus = isTicketsTab ? 'COMPLETED' : activeTab;
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -267,7 +411,7 @@ export default function EventsScreen() {
             <Ionicons name="search-outline" size={18} color="#718096" style={{ marginRight: 8 }} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search by title or venue..."
+              placeholder={isTicketsTab ? 'Search your tickets...' : 'Search by title or venue...'}
               placeholderTextColor="#A0AEC0"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -304,7 +448,10 @@ export default function EventsScreen() {
                 }}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
+                <Text
+                  style={[styles.tabLabel, isActive && styles.activeTabLabel]}
+                  numberOfLines={1}
+                >
                   {tab.label}
                 </Text>
                 {isActive && <View style={styles.activeUnderline} />}
@@ -322,7 +469,7 @@ export default function EventsScreen() {
         )}
 
         {/* Error Banner with Retry Button */}
-        {hasError && (
+        {!isTicketsTab && hasError && (
           <TouchableOpacity
             style={styles.errorBanner}
             onPress={() => loadEventsData(true)}
@@ -339,8 +486,69 @@ export default function EventsScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Loading Skeletons on initial fetch */}
-        {loading ? (
+        {isTicketsTab && ticketsError && (
+          <TouchableOpacity
+            style={styles.errorBanner}
+            onPress={() => loadTickets()}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="alert-circle-outline" size={20} color="#C53030" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorBannerTitle}>Unable to load your tickets</Text>
+              <Text style={styles.errorBannerSub}>{ticketsError}</Text>
+            </View>
+            <Ionicons name="refresh" size={18} color="#C53030" />
+          </TouchableOpacity>
+        )}
+
+        {/* My Tickets */}
+        {isTicketsTab ? (
+          ticketsLoading && ticketsFetchedAt === null ? (
+            <View style={styles.skeletonList}>
+              <EventCardSkeleton />
+              <EventCardSkeleton />
+            </View>
+          ) : (
+            <FlatList
+              data={filteredTickets}
+              keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={handleRefresh}
+                  colors={['#6B1D2A']}
+                  tintColor="#6B1D2A"
+                />
+              }
+              renderItem={({ item }) => (
+                <TicketCard
+                  registration={item}
+                  onPress={() =>
+                    router.push(`/(member)/event-detail?id=${item.eventId}&from=events`)
+                  }
+                  onDownload={handleDownloadQr}
+                />
+              )}
+              ListEmptyComponent={
+                !ticketsError ? (
+                  <View style={styles.emptyStateBox}>
+                    <Ionicons name={emptyCopy.icon} size={48} color="#CBD5E0" />
+                    <Text style={styles.emptyTitle}>
+                      {debouncedQuery ? 'No matching tickets' : emptyCopy.title}
+                    </Text>
+                    <Text style={styles.emptySub}>
+                      {debouncedQuery
+                        ? `No ticket matches "${debouncedQuery}".`
+                        : emptyCopy.sub}
+                    </Text>
+                  </View>
+                ) : null
+              }
+            />
+          )
+        ) : loading ? (
           <View style={styles.skeletonList}>
             <EventCardSkeleton />
             <EventCardSkeleton />
@@ -363,7 +571,7 @@ export default function EventsScreen() {
             renderItem={({ item }) => (
               <EventCard
                 event={item}
-                activeTab={activeTab}
+                activeTab={eventTabStatus}
                 onPress={() => router.push(`/(member)/event-detail?id=${item.id}&from=events`)}
                 onRegisterToggle={handleRegisterToggle}
                 isRegistering={registeringEventId === item.id}
@@ -372,14 +580,14 @@ export default function EventsScreen() {
             ListEmptyComponent={
               !hasError ? (
                 <View style={styles.emptyStateBox}>
-                  <Ionicons name="calendar-outline" size={48} color="#CBD5E0" />
+                  <Ionicons name={emptyCopy.icon} size={48} color="#CBD5E0" />
                   <Text style={styles.emptyTitle}>
-                    No {activeTab.toLowerCase()} events found
+                    {debouncedQuery ? 'No matching events' : emptyCopy.title}
                   </Text>
                   <Text style={styles.emptySub}>
                     {debouncedQuery
                       ? `No events matching "${debouncedQuery}".`
-                      : `There are currently no ${activeTab.toLowerCase()} community events.`}
+                      : emptyCopy.sub}
                   </Text>
                 </View>
               ) : null
@@ -454,12 +662,15 @@ const styles = StyleSheet.create({
   tabItem: {
     flex: 1,
     paddingVertical: 10,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
   tabLabel: {
-    fontSize: 14,
+    // 12.5 rather than 14: four segments share the row now, and "Completed"
+    // must not wrap on a narrow handset.
+    fontSize: 12.5,
     fontWeight: '600',
     color: '#718096',
   },
