@@ -1135,10 +1135,14 @@ export class AdminService {
   }
 
   /**
-   * Get all RSVPs for an event (for CSV export)
+   * Get all RSVPs for an event, with ticket / attendance state and a
+   * summary the console renders as stat cards.
    */
   static async getEventRegistrations(eventId: string) {
-    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { city: true },
+    });
 
     if (!event) {
       throw new AppError('Event not found', 404);
@@ -1166,10 +1170,325 @@ export class AdminService {
             },
           },
         },
+        scannedBy: {
+          select: { id: true, fullName: true, email: true },
+        },
       },
     });
 
-    return { event, registrations };
+    const active = registrations.filter((r) => r.status !== RSVPStatus.CANCELLED);
+    const checkedIn = active.filter((r) => r.scanCount > 0);
+    const stats = {
+      total: registrations.length,
+      registered: registrations.filter((r) => r.status === RSVPStatus.REGISTERED).length,
+      attended: registrations.filter((r) => r.status === RSVPStatus.ATTENDED).length,
+      cancelled: registrations.filter((r) => r.status === RSVPStatus.CANCELLED).length,
+      checkedIn: checkedIn.length,
+      notCheckedIn: active.length - checkedIn.length,
+      // Share of people who still hold a valid ticket and have walked in.
+      attendanceRate: active.length === 0 ? 0 : Math.round((checkedIn.length / active.length) * 100),
+      totalScans: registrations.reduce((sum, r) => sum + r.scanCount, 0),
+      exhaustedTickets: active.filter((r) => r.scanCount >= r.maxScans).length,
+      missingCodes: active.filter((r) => !r.registrationCode).length,
+    };
+
+    return { event, registrations, stats };
+  }
+
+  /**
+   * Change how many times a ticket may be scanned for an event.
+   *
+   * `applyToExisting` decides the blast radius. Off, only tickets issued from
+   * now on get the new quota — already-issued passes keep the number they were
+   * printed with. On, live tickets are rewritten too, which is what an admin
+   * wants when they realise mid-event that one entry per person is too few.
+   * Cancelled RSVPs are never touched.
+   */
+  static async updateEventQrScanLimit(
+    eventId: string,
+    qrScanLimit: number,
+    adminUserId: string,
+    applyToExisting = false,
+  ) {
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) {
+      throw new AppError('Event not found', 404);
+    }
+
+    const limit = Math.min(100, Math.max(1, Math.trunc(qrScanLimit)));
+    const previous = event.qrScanLimit;
+
+    const updated = await prisma.event.update({
+      where: { id: eventId },
+      data: { qrScanLimit: limit },
+      include: { city: true, _count: { select: { rsvps: true } } },
+    });
+
+    let ticketsUpdated = 0;
+    if (applyToExisting) {
+      const result = await prisma.eventRSVP.updateMany({
+        where: { eventId, status: { not: RSVPStatus.CANCELLED } },
+        data: { maxScans: limit },
+      });
+      ticketsUpdated = result.count;
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'EVENT_QR_LIMIT_UPDATED',
+        entity: 'Event',
+        entityId: eventId,
+        metadata: { title: event.title, previous, qrScanLimit: limit, applyToExisting, ticketsUpdated },
+      },
+    });
+
+    return { event: updated, ticketsUpdated };
+  }
+
+  /**
+   * Raise or lower the scan quota on one ticket, without touching the event
+   * default. Useful when a single member needs to re-enter the venue.
+   */
+  static async updateRegistrationScanLimit(registrationId: string, maxScans: number, adminUserId: string) {
+    const rsvp = await prisma.eventRSVP.findUnique({
+      where: { id: registrationId },
+      include: { event: { select: { title: true } }, user: { select: { fullName: true } } },
+    });
+    if (!rsvp) {
+      throw new AppError('Registration not found', 404);
+    }
+
+    const limit = Math.min(100, Math.max(1, Math.trunc(maxScans)));
+
+    const updated = await prisma.eventRSVP.update({
+      where: { id: registrationId },
+      data: { maxScans: limit },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'REGISTRATION_SCAN_LIMIT_UPDATED',
+        entity: 'EventRSVP',
+        entityId: registrationId,
+        metadata: {
+          eventTitle: rsvp.event.title,
+          member: rsvp.user.fullName,
+          previous: rsvp.maxScans,
+          maxScans: limit,
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Cancel a member's registration. The row is kept (not deleted) so the
+   * audit trail and any prior check-in survive, and so the unique
+   * (userId, eventId) pair stays available for a clean re-register.
+   */
+  static async cancelRegistration(registrationId: string, adminUserId: string, reason?: string) {
+    const rsvp = await prisma.eventRSVP.findUnique({
+      where: { id: registrationId },
+      include: {
+        event: { select: { id: true, title: true } },
+        user: { select: { id: true, fullName: true } },
+      },
+    });
+    if (!rsvp) {
+      throw new AppError('Registration not found', 404);
+    }
+    if (rsvp.status === RSVPStatus.CANCELLED) {
+      throw new AppError('This registration is already cancelled', 400);
+    }
+
+    const updated = await prisma.eventRSVP.update({
+      where: { id: registrationId },
+      data: { status: RSVPStatus.CANCELLED },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'REGISTRATION_CANCELLED',
+        entity: 'EventRSVP',
+        entityId: registrationId,
+        metadata: {
+          eventId: rsvp.event.id,
+          eventTitle: rsvp.event.title,
+          memberId: rsvp.user.id,
+          member: rsvp.user.fullName,
+          reason: reason ?? null,
+        },
+      },
+    });
+
+    void NotificationService.broadcastEventNotification(
+      rsvp.event.id,
+      `Registration Cancelled: ${rsvp.event.title}`,
+      reason?.trim()
+        ? `Your registration was cancelled by an administrator. Reason: ${reason.trim()}`
+        : 'Your registration for this event was cancelled by an administrator.',
+      { action: 'REGISTRATION_CANCELLED' },
+      [rsvp.user.id],
+    );
+
+    return updated;
+  }
+
+  /**
+   * Reinstate a cancelled registration. The original code is kept if it still
+   * exists so a member who screenshotted their pass can keep using it.
+   */
+  static async restoreRegistration(registrationId: string, adminUserId: string) {
+    const rsvp = await prisma.eventRSVP.findUnique({
+      where: { id: registrationId },
+      include: {
+        event: { select: { id: true, title: true, qrScanLimit: true } },
+        user: { select: { id: true, fullName: true } },
+      },
+    });
+    if (!rsvp) {
+      throw new AppError('Registration not found', 404);
+    }
+    if (rsvp.status !== RSVPStatus.CANCELLED) {
+      throw new AppError('This registration is not cancelled', 400);
+    }
+
+    const updated = await prisma.eventRSVP.update({
+      where: { id: registrationId },
+      data: {
+        // A ticket that was already used comes back as ATTENDED, so the
+        // attendance figures stay truthful.
+        status: rsvp.scanCount > 0 ? RSVPStatus.ATTENDED : RSVPStatus.REGISTERED,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'REGISTRATION_RESTORED',
+        entity: 'EventRSVP',
+        entityId: registrationId,
+        metadata: {
+          eventId: rsvp.event.id,
+          eventTitle: rsvp.event.title,
+          memberId: rsvp.user.id,
+          member: rsvp.user.fullName,
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Mark someone as having entered the venue from the admin console — the
+   * manual path for when the volunteer scanner is unavailable or the member
+   * arrives without a phone.
+   */
+  static async checkInRegistration(registrationId: string, adminUserId: string) {
+    const rsvp = await prisma.eventRSVP.findUnique({
+      where: { id: registrationId },
+      include: {
+        event: { select: { id: true, title: true } },
+        user: { select: { id: true, fullName: true } },
+      },
+    });
+    if (!rsvp) {
+      throw new AppError('Registration not found', 404);
+    }
+    if (rsvp.status === RSVPStatus.CANCELLED) {
+      throw new AppError('This registration is cancelled and cannot be checked in', 400);
+    }
+    if (rsvp.scanCount >= rsvp.maxScans) {
+      throw new AppError(
+        `This ticket has already used all ${rsvp.maxScans} of its entries. Raise its scan limit to admit the member again.`,
+        400,
+      );
+    }
+
+    const now = new Date();
+    const updated = await prisma.eventRSVP.update({
+      where: { id: registrationId },
+      data: {
+        status: RSVPStatus.ATTENDED,
+        scanCount: { increment: 1 },
+        firstScanAt: rsvp.firstScanAt ?? now,
+        lastScanAt: now,
+        scannedById: adminUserId,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'REGISTRATION_CHECKED_IN',
+        entity: 'EventRSVP',
+        entityId: registrationId,
+        metadata: {
+          eventId: rsvp.event.id,
+          eventTitle: rsvp.event.title,
+          memberId: rsvp.user.id,
+          member: rsvp.user.fullName,
+          method: 'MANUAL_ADMIN',
+          scanCount: updated.scanCount,
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Reverse a check-in that was recorded by mistake. Resets the entry
+   * counters so the member can be admitted again on a fresh scan.
+   */
+  static async undoCheckIn(registrationId: string, adminUserId: string) {
+    const rsvp = await prisma.eventRSVP.findUnique({
+      where: { id: registrationId },
+      include: {
+        event: { select: { id: true, title: true } },
+        user: { select: { id: true, fullName: true } },
+      },
+    });
+    if (!rsvp) {
+      throw new AppError('Registration not found', 404);
+    }
+    if (rsvp.scanCount === 0) {
+      throw new AppError('This member has not been checked in', 400);
+    }
+
+    const updated = await prisma.eventRSVP.update({
+      where: { id: registrationId },
+      data: {
+        status: RSVPStatus.REGISTERED,
+        scanCount: 0,
+        firstScanAt: null,
+        lastScanAt: null,
+        scannedById: null,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'REGISTRATION_CHECKIN_REVERSED',
+        entity: 'EventRSVP',
+        entityId: registrationId,
+        metadata: {
+          eventId: rsvp.event.id,
+          eventTitle: rsvp.event.title,
+          memberId: rsvp.user.id,
+          member: rsvp.user.fullName,
+          previousScanCount: rsvp.scanCount,
+        },
+      },
+    });
+
+    return updated;
   }
 
   // ═══════════════════════════════════════════════════════════

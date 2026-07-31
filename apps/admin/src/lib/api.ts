@@ -137,7 +137,56 @@ export const deleteEvent = (token: string, id: string) =>
   apiFetch<ApiResponse<void>>(`/admin/events/${id}`, { token, method: 'DELETE' });
 
 export const getEventRegistrations = (token: string, id: string) =>
-  apiFetch<ApiResponse<unknown[]>>(`/admin/events/${id}/registrations`, { token });
+  apiFetch<ApiResponse<EventRegistrationsResponse>>(`/admin/events/${id}/registrations`, { token });
+
+/**
+ * Change entries-per-ticket for an event. `applyToExisting` also rewrites the
+ * quota on tickets already issued — without it, only future registrations
+ * pick up the new number.
+ */
+export const updateEventQrScanLimit = (
+  token: string,
+  id: string,
+  qrScanLimit: number,
+  applyToExisting = false,
+) =>
+  apiFetch<ApiResponse<{ event: EventData; ticketsUpdated: number }>>(
+    `/admin/events/${id}/qr-scan-limit`,
+    { token, method: 'PUT', body: JSON.stringify({ qrScanLimit, applyToExisting }) },
+  );
+
+// Event registrations (tickets)
+export const updateRegistrationScanLimit = (token: string, id: string, maxScans: number) =>
+  apiFetch<ApiResponse<RegistrationData>>(`/admin/registrations/${id}/scan-limit`, {
+    token,
+    method: 'PUT',
+    body: JSON.stringify({ maxScans }),
+  });
+
+export const cancelRegistration = (token: string, id: string, reason?: string) =>
+  apiFetch<ApiResponse<RegistrationData>>(`/admin/registrations/${id}/cancel`, {
+    token,
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+
+export const restoreRegistration = (token: string, id: string) =>
+  apiFetch<ApiResponse<RegistrationData>>(`/admin/registrations/${id}/restore`, {
+    token,
+    method: 'POST',
+  });
+
+export const checkInRegistration = (token: string, id: string) =>
+  apiFetch<ApiResponse<RegistrationData>>(`/admin/registrations/${id}/check-in`, {
+    token,
+    method: 'POST',
+  });
+
+export const undoCheckIn = (token: string, id: string) =>
+  apiFetch<ApiResponse<RegistrationData>>(`/admin/registrations/${id}/undo-check-in`, {
+    token,
+    method: 'POST',
+  });
 
 // Notices
 export const getNoticeKPIs = (token: string) =>
@@ -394,6 +443,8 @@ export interface EventData {
   maxAttendees?: number;
   allowWaitlist?: boolean;
   registrationOpen?: boolean;
+  /** Entries allowed per issued ticket. Defaults to 1 server-side. */
+  qrScanLimit?: number;
   isPublished: boolean;
   isPublic?: boolean;
   contactName?: string;
@@ -403,6 +454,60 @@ export interface EventData {
   createdAt: string;
   photos?: Array<{ id: string; imageUrl: string; caption?: string }>;
   _count?: { rsvps: number };
+}
+
+export type RSVPStatus = 'REGISTERED' | 'CANCELLED' | 'ATTENDED';
+
+/** One member's ticket for an event, as the admin console sees it. */
+export interface RegistrationData {
+  id: string;
+  userId: string;
+  eventId: string;
+  status: RSVPStatus;
+  note?: string | null;
+  /** Human-readable ticket code (MYS-XXXX-XXXX). Null on legacy rows. */
+  registrationCode: string | null;
+  scanCount: number;
+  maxScans: number;
+  firstScanAt: string | null;
+  lastScanAt: string | null;
+  scannedById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    email: string;
+    phone?: string | null;
+    fullName?: string | null;
+    memberId?: string | null;
+    profile?: {
+      firstName?: string | null;
+      lastName?: string | null;
+      occupation?: string | null;
+      organization?: string | null;
+      city?: { name: string } | null;
+    } | null;
+  };
+  scannedBy?: { id: string; fullName?: string | null; email: string } | null;
+}
+
+export interface RegistrationStats {
+  total: number;
+  registered: number;
+  attended: number;
+  cancelled: number;
+  checkedIn: number;
+  notCheckedIn: number;
+  attendanceRate: number;
+  totalScans: number;
+  exhaustedTickets: number;
+  missingCodes: number;
+}
+
+export interface EventRegistrationsResponse {
+  event: EventData;
+  registrations: RegistrationData[];
+  stats: RegistrationStats;
 }
 
 export interface NoticeData {

@@ -41,6 +41,14 @@ router.post('/events/:id/cancel', AdminController.cancelEvent);
 router.post('/events/:id/duplicate', AdminController.duplicateEvent);
 router.delete('/events/:id', AdminController.deleteEvent);
 router.get('/events/:id/registrations', AdminController.getEventRegistrations);
+router.put('/events/:id/qr-scan-limit', AdminController.updateEventQrScanLimit);
+
+// ─── Event Registrations (tickets) ───────
+router.put('/registrations/:id/scan-limit', AdminController.updateRegistrationScanLimit);
+router.post('/registrations/:id/cancel', AdminController.cancelRegistration);
+router.post('/registrations/:id/restore', AdminController.restoreRegistration);
+router.post('/registrations/:id/check-in', AdminController.checkInRegistration);
+router.post('/registrations/:id/undo-check-in', AdminController.undoCheckIn);
 
 // ─── Notices ─────────────────────────────
 router.get('/notices/kpis', AdminController.getNoticeKPIs);

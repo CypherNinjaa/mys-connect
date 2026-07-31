@@ -67,6 +67,8 @@ export default function EventEditorForm({ initialData, isEdit }: EventEditorForm
 
     // Registration
     maxCapacity: initialData?.maxAttendees || initialData?.maxCapacity ? String(initialData?.maxAttendees || initialData?.maxCapacity) : '',
+    /** Entries allowed per issued QR ticket. One scan is the sensible default. */
+    qrScanLimit: String(initialData?.qrScanLimit ?? 1),
     allowWaitlist: initialData?.allowWaitlist || false,
     registrationOpen: initialData?.registrationOpen ?? true,
 
@@ -120,6 +122,7 @@ export default function EventEditorForm({ initialData, isEdit }: EventEditorForm
       if (form.latitude) formData.append('latitude', form.latitude);
       if (form.longitude) formData.append('longitude', form.longitude);
       if (form.maxCapacity) formData.append('maxAttendees', form.maxCapacity);
+      if (form.qrScanLimit) formData.append('qrScanLimit', form.qrScanLimit);
       if (form.contactName) formData.append('contactName', form.contactName);
       if (form.contactPhone) formData.append('contactPhone', form.contactPhone);
       if (form.shareDescription) formData.append('shareDescription', form.shareDescription);
@@ -427,16 +430,36 @@ export default function EventEditorForm({ initialData, isEdit }: EventEditorForm
             {activeTab === 'registration' && (
               <div className="space-y-4 animate-in fade-in duration-200">
                 <h3 className="text-base font-bold text-gray-900 border-b pb-2">Capacity & Registration Controls</h3>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Maximum Capacity (Seats)</label>
-                  <input
-                    type="number"
-                    name="maxCapacity"
-                    value={form.maxCapacity}
-                    onChange={handleChange}
-                    placeholder="Leave empty for unlimited capacity"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20 font-medium"
-                  />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Maximum Capacity (Seats)</label>
+                    <input
+                      type="number"
+                      name="maxCapacity"
+                      value={form.maxCapacity}
+                      onChange={handleChange}
+                      placeholder="Leave empty for unlimited capacity"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Entries Per QR Ticket</label>
+                    <input
+                      type="number"
+                      name="qrScanLimit"
+                      min={1}
+                      max={100}
+                      value={form.qrScanLimit}
+                      onChange={handleChange}
+                      placeholder="1"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-maroon/20 font-medium"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      How many times one member&apos;s QR code admits them. Keep it at 1 for single-entry events;
+                      raise it for multi-day or re-entry passes. Changing this later only affects new
+                      registrations unless you re-apply it from the management console.
+                    </p>
+                  </div>
                 </div>
                 <div className="space-y-3 pt-2">
                   <label className="flex items-center gap-3 cursor-pointer">

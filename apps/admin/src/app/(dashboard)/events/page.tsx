@@ -43,6 +43,7 @@ import {
   Phone,
   UserCheck,
   Eye,
+  ScanLine,
 } from 'lucide-react';
 
 const CHAPTERS = ['ALL', 'Ranchi', 'Jaipur', 'Kolkata', 'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad'];
@@ -681,7 +682,16 @@ export default function EventsPage() {
                       {/* Actions */}
                       <td className="px-4 py-4 text-right">
                         <div className="flex items-center justify-end gap-1 text-gray-500">
-                          {/* View Registered Members Modal Button */}
+                          {/* Event Management Console — tickets, QR life, check-in, exports */}
+                          <Link
+                            href={`/events/${event.id}/manage`}
+                            className="p-1.5 hover:text-maroon hover:bg-maroon/10 rounded-lg transition-colors"
+                            title="Manage Registrations & QR Tickets"
+                          >
+                            <ScanLine className="w-4 h-4" />
+                          </Link>
+
+                          {/* Quick peek at the member list. The console above is the full surface. */}
                           <button
                             onClick={() => setViewingEvent(event)}
                             className="p-1.5 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
@@ -923,12 +933,21 @@ export default function EventsPage() {
             {/* Modal Footer */}
             <div className="bg-gray-50 border-t border-gray-200 p-4 flex justify-between items-center text-xs text-gray-500">
               <span>Showing {filteredRegList.length} of {rawRegList.length} registrations</span>
-              <button
-                onClick={() => setViewingEvent(null)}
-                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-lg"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Check-in, QR life and the richer exports all live in the console. */}
+                <Link
+                  href={`/events/${viewingEvent.id}/manage`}
+                  className="px-4 py-2 bg-maroon hover:bg-maroon-dark text-white font-bold rounded-lg inline-flex items-center gap-1.5"
+                >
+                  <ScanLine className="w-4 h-4" /> Open Management Console
+                </Link>
+                <button
+                  onClick={() => setViewingEvent(null)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-lg"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

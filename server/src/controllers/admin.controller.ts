@@ -367,6 +367,124 @@ export class AdminController {
   }
 
   /**
+   * PUT /api/v1/admin/events/:id/qr-scan-limit
+   * Change the entries-per-ticket for an event, optionally rewriting the
+   * quota on tickets that have already been issued.
+   */
+  static async updateEventQrScanLimit(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user!.id;
+      const parsed = parseInt(String(req.body?.qrScanLimit), 10);
+      if (!Number.isFinite(parsed)) {
+        res.status(400).json({
+          success: false,
+          error: { message: 'qrScanLimit must be a number' },
+        });
+        return;
+      }
+      const applyToExisting = req.body?.applyToExisting === true || String(req.body?.applyToExisting) === 'true';
+      const result = await AdminService.updateEventQrScanLimit(id, parsed, adminUserId, applyToExisting);
+
+      res.json({
+        success: true,
+        data: result,
+        message: result.ticketsUpdated
+          ? `Scan limit updated. ${result.ticketsUpdated} existing ticket(s) rewritten.`
+          : 'Scan limit updated for future registrations.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * PUT /api/v1/admin/registrations/:id/scan-limit
+   * Adjust the entry quota on a single ticket.
+   */
+  static async updateRegistrationScanLimit(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user!.id;
+      const parsed = parseInt(String(req.body?.maxScans), 10);
+      if (!Number.isFinite(parsed)) {
+        res.status(400).json({
+          success: false,
+          error: { message: 'maxScans must be a number' },
+        });
+        return;
+      }
+      const result = await AdminService.updateRegistrationScanLimit(id, parsed, adminUserId);
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/registrations/:id/cancel
+   */
+  static async cancelRegistration(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user!.id;
+      const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+      const result = await AdminService.cancelRegistration(id, adminUserId, reason);
+
+      res.json({ success: true, data: result, message: 'Registration cancelled' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/registrations/:id/restore
+   */
+  static async restoreRegistration(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user!.id;
+      const result = await AdminService.restoreRegistration(id, adminUserId);
+
+      res.json({ success: true, data: result, message: 'Registration restored' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/registrations/:id/check-in
+   * Manual gate entry from the console.
+   */
+  static async checkInRegistration(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user!.id;
+      const result = await AdminService.checkInRegistration(id, adminUserId);
+
+      res.json({ success: true, data: result, message: 'Entry recorded' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/registrations/:id/undo-check-in
+   */
+  static async undoCheckIn(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = String(req.params.id);
+      const adminUserId = req.user!.id;
+      const result = await AdminService.undoCheckIn(id, adminUserId);
+
+      res.json({ success: true, data: result, message: 'Check-in reversed' });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/v1/admin/notices
    * List notices with pagination and filters
    */
