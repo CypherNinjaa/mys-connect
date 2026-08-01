@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { userResolver } from '../middleware/userResolver';
 import { requireRole } from '../middleware/rbac';
 import { AdminController } from '../controllers/admin.controller';
+import { TestimonyController } from '../controllers/testimony.controller';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -75,6 +76,14 @@ router.delete('/gallery/albums/:id', AdminController.deleteAlbum);
 router.post('/gallery/albums/:id/photos', upload.array('photos', 50), AdminController.uploadPhotos);
 router.put('/gallery/albums/:id/photos/reorder', AdminController.reorderAlbumPhotos);
 router.put('/gallery/albums/:id/cover', AdminController.setAlbumCover);
+
+// ─── Testimonials ────────────────────────
+router.get('/testimonies', TestimonyController.listAll);
+router.post('/testimonies', upload.single('image'), TestimonyController.create);
+router.put('/testimonies/reorder', TestimonyController.reorder);
+router.get('/testimonies/:id', TestimonyController.getById);
+router.put('/testimonies/:id', upload.single('image'), TestimonyController.update);
+router.delete('/testimonies/:id', TestimonyController.delete);
 
 // ─── Audit Logs ──────────────────────────
 router.get('/audit-logs', AdminController.listAuditLogs);

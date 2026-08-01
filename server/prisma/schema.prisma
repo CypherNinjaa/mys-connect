@@ -496,3 +496,21 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+
+/// Testimonials / Member quotes & stories
+model Testimony {
+  id          String   @id @default(cuid())
+  authorName  String
+  designation String?
+  content     String   @db.Text
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sortOrder])
+  @@index([isPublished])
+  @@map("testimonies")
+}

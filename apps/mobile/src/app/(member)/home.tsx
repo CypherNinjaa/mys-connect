@@ -25,7 +25,7 @@ import { useCacheChannel } from '../../hooks/useCacheChannel';
 import { HomeHeader } from '../../components/home/HomeHeader';
 import { EventCarousel } from '../../components/home/EventCarousel';
 import { QuickAccessCard } from '../../components/home/QuickAccessCard';
-import { UpcomingEventCard } from '../../components/home/UpcomingEventCard';
+import { TestimonialSection, TestimonyItem } from '../../components/home/TestimonialSection';
 import { SkeletonItem } from '../../components/ui/SkeletonLoader';
 
 export default function HomeScreen() {
@@ -35,7 +35,7 @@ export default function HomeScreen() {
   const [user, setUser] = useState<any>(null);
   const [featuredEvents, setFeaturedEvents] = useState<FeaturedEvent[]>([]);
   const [quickAccessItems] = useState<QuickAccessItem[]>(MOCK_QUICK_ACCESS);
-  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
+  const [testimonies, setTestimonies] = useState<TestimonyItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -52,7 +52,7 @@ export default function HomeScreen() {
         if (cached) {
           setUser(cached.user);
           setFeaturedEvents(cached.featuredEvents);
-          setUpcomingEvents(cached.upcomingEvents);
+          setTestimonies(cached.testimonies || []);
           setLoading(false);
           setRefreshing(false);
           return;
@@ -72,12 +72,12 @@ export default function HomeScreen() {
       try {
         let fetchedUser: any = user;
         let finalFeatured: FeaturedEvent[] = [];
-        let finalUpcoming: UpcomingEvent[] = [];
+        let finalTestimonies: TestimonyItem[] = [];
 
         if (isSignedIn) {
           const token = await getToken();
           if (token) {
-            const [userData, eventsRes] = await Promise.all([
+            const [userData, eventsRes, testimoniesRes] = await Promise.all([
               ApiService.getMe(token).catch((err) => {
                 console.warn('Home getMe error:', err?.message || err);
                 return null;
@@ -86,13 +86,16 @@ export default function HomeScreen() {
                 console.warn('Home getEvents error:', err?.message || err);
                 return null;
               }),
+              ApiService.getTestimonies(token).catch((err) => {
+                console.warn('Home getTestimonies error:', err?.message || err);
+                return null;
+              }),
             ]);
 
             if (userData) fetchedUser = userData;
 
             if (eventsRes && Array.isArray(eventsRes.events) && eventsRes.events.length > 0) {
               const apiEvents = eventsRes.events;
-
               finalFeatured = apiEvents.slice(0, 4).map((evt: any) => ({
                 id: evt.id,
                 title: evt.title,
@@ -110,23 +113,16 @@ export default function HomeScreen() {
                   'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80',
                 actionText: 'Register Now',
               }));
+            }
 
-              finalUpcoming = apiEvents.slice(0, 4).map((evt: any) => ({
-                id: evt.id,
-                title: evt.title,
-                dateTime: `${
-                  evt.startDate
-                    ? new Date(evt.startDate).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })
-                    : 'Upcoming'
-                } | ${evt.startTime || '09:00 AM'}`,
-                venue: evt.venue || 'Shree Maheshwari Bhawan',
-                iconName: 'pulse',
-                iconColor: '#E53E3E',
-                bgColor: '#FFEBF0',
+            if (Array.isArray(testimoniesRes) && testimoniesRes.length > 0) {
+              finalTestimonies = testimoniesRes.map((t: any) => ({
+                id: t.id,
+                authorName: t.authorName,
+                designation: t.designation,
+                content: t.content,
+                imageUrl: t.imageUrl,
+                sortOrder: t.sortOrder,
               }));
             }
           }
@@ -134,13 +130,13 @@ export default function HomeScreen() {
 
         setUser(fetchedUser);
         setFeaturedEvents(finalFeatured);
-        setUpcomingEvents(finalUpcoming);
+        setTestimonies(finalTestimonies);
 
         // Store in local cache
         HomeCacheManager.setCachedData({
           user: fetchedUser,
           featuredEvents: finalFeatured,
-          upcomingEvents: finalUpcoming,
+          testimonies: finalTestimonies,
         });
       } catch (err: any) {
         console.error('Home load error:', err);
@@ -148,9 +144,7 @@ export default function HomeScreen() {
         setErrorMessage(err.message || 'Unable to connect to server');
 
         const mockFeatured = await HomeService.getFeaturedEvents();
-        const mockUpcoming = await HomeService.getUpcomingEvents();
         setFeaturedEvents(mockFeatured.slice(0, 4));
-        setUpcomingEvents(mockUpcoming.slice(0, 4));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -176,7 +170,7 @@ export default function HomeScreen() {
     if (!cached) return;
     setUser(cached.user);
     setFeaturedEvents(cached.featuredEvents);
-    setUpcomingEvents(cached.upcomingEvents);
+    setTestimonies(cached.testimonies || []);
   });
 
   // Rate-Limited Manual Refresh
@@ -199,14 +193,6 @@ export default function HomeScreen() {
 
   const handleRegisterPress = (event: FeaturedEvent) => {
     router.push(`/(member)/event-detail?id=${event.id}&from=home`);
-  };
-
-  const handleUpcomingEventPress = (event: UpcomingEvent) => {
-    router.push(`/(member)/event-detail?id=${event.id}&from=home`);
-  };
-
-  const handleViewAllEvents = () => {
-    router.push('/(member)/events');
   };
 
   const profile = user?.profile;
@@ -294,12 +280,8 @@ export default function HomeScreen() {
             onItemPress={handleQuickAccessPress}
           />
 
-          {/* 4. Upcoming Events */}
-          <UpcomingEventCard
-            events={upcomingEvents}
-            onEventPress={handleUpcomingEventPress}
-            onViewAllPress={handleViewAllEvents}
-          />
+          {/* 4. Leadership Testimonials Section */}
+          <TestimonialSection testimonies={testimonies} />
         </View>
       </ScrollView>
     </SafeAreaView>

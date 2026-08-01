@@ -601,4 +601,16 @@ export class ApiService {
     const data = await parseJson(res, 'Failed to unregister push token');
     return data?.data;
   }
+
+  /**
+   * Testimonials API
+   */
+  static async getTestimonies(token?: string) {
+    const res = await fetchWithTimeout(`${API.baseUrl}/testimonies`, {
+      method: 'GET',
+      headers: await this.getHeaders(token),
+    });
+    const data = await parseJson(res, 'Failed to fetch testimonials');
+    return data?.data || [];
+  }
 }

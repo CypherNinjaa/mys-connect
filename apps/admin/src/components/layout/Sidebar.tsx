@@ -18,6 +18,7 @@ import {
   Plus,
   Sparkles,
   ChevronDown,
+  Quote,
 } from 'lucide-react';
 
 const navItems = [
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/events', label: 'Events', icon: Calendar },
   { href: '/notices', label: 'Notices', icon: FileText },
   { href: '/gallery', label: 'Gallery', icon: Image },
+  { href: '/testimonies', label: 'Testimonials', icon: Quote },
   { href: '/audit-logs', label: 'Audit Logs', icon: ClipboardList },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];

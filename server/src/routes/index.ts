@@ -8,6 +8,7 @@ import { eventRoutes } from './event.routes';
 import { noticeRoutes } from './notice.routes';
 import { galleryRoutes } from './gallery.routes';
 import { notificationRoutes } from './notification.routes';
+import { testimonyRoutes } from './testimony.routes';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.use('/members', memberRoutes);
 router.use('/events', eventRoutes);
 router.use('/notices', noticeRoutes);
 router.use('/gallery', galleryRoutes);
+router.use('/testimonies', testimonyRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/webhooks', webhookRoutes);
@@ -37,6 +39,7 @@ router.get('/', (_req, res) => {
       events: '/api/v1/events',
       notices: '/api/v1/notices',
       gallery: '/api/v1/gallery',
+      testimonies: '/api/v1/testimonies',
       notifications: '/api/v1/notifications',
       admin: '/api/v1/admin',
       webhooks: '/api/v1/webhooks',

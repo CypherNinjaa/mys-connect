@@ -527,6 +527,19 @@ export interface NoticeData {
   createdBy?: { profile?: { firstName: string; lastName: string } };
 }
 
+export interface TestimonyData {
+  id: string;
+  authorName: string;
+  designation?: string | null;
+  content: string;
+  imageUrl?: string | null;
+  sortOrder: number;
+  isPublished: boolean;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /**
  * Album categories mirror the Prisma `AlbumCategory` enum, which in turn maps
  * 1:1 onto the mobile gallery's tab bar. Keep the three in sync.
@@ -622,3 +635,38 @@ export interface SettingInput {
   type?: string;
   group?: string;
 }
+
+// Testimonials API
+export const getTestimonies = (token: string, search?: string) =>
+  apiFetch<ApiResponse<TestimonyData[]>>(`/admin/testimonies${search ? `?search=${encodeURIComponent(search)}` : ''}`, { token });
+
+export const getTestimonyById = (token: string, id: string) =>
+  apiFetch<ApiResponse<TestimonyData>>(`/admin/testimonies/${id}`, { token });
+
+export const createTestimony = (token: string, formData: FormData) =>
+  apiFetch<ApiResponse<TestimonyData>>('/admin/testimonies', {
+    token,
+    method: 'POST',
+    body: formData,
+  });
+
+export const updateTestimony = (token: string, id: string, formData: FormData) =>
+  apiFetch<ApiResponse<TestimonyData>>(`/admin/testimonies/${id}`, {
+    token,
+    method: 'PUT',
+    body: formData,
+  });
+
+export const deleteTestimony = (token: string, id: string) =>
+  apiFetch<ApiResponse<{ id: string; success: boolean }>>(`/admin/testimonies/${id}`, {
+    token,
+    method: 'DELETE',
+  });
+
+export const reorderTestimonies = (token: string, ids: string[]) =>
+  apiFetch<ApiResponse<{ success: boolean; count: number }>>('/admin/testimonies/reorder', {
+    token,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });

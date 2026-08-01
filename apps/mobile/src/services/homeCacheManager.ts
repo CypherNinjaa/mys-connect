@@ -4,7 +4,7 @@ import type { EventPatch } from './eventCacheManager';
 export interface HomeCacheData {
   user: any;
   featuredEvents: any[];
-  upcomingEvents: any[];
+  testimonies: any[];
   timestamp: number;
 }
 
@@ -49,7 +49,7 @@ export class HomeCacheManager {
   /**
    * Caches fresh home data with timestamp
    */
-  static setCachedData(data: { user: any; featuredEvents: any[]; upcomingEvents: any[] }): void {
+  static setCachedData(data: { user: any; featuredEvents: any[]; testimonies: any[] }): void {
     this.cache = {
       ...data,
       timestamp: Date.now(),
@@ -83,7 +83,7 @@ export class HomeCacheManager {
   // approves the account or changes its role.
   // ─────────────────────────────────────────────────────────────────────────────
 
-  /** Apply an event update to whichever home lists contain it. */
+  /** Apply an event update to featured events on home. */
   static patchEvent(event: EventPatch): void {
     if (!this.cache) return;
 
@@ -96,29 +96,22 @@ export class HomeCacheManager {
     };
 
     const featured = apply(this.cache.featuredEvents);
-    const upcoming = apply(this.cache.upcomingEvents);
-    if (!featured.changed && !upcoming.changed) return;
+    if (!featured.changed) return;
 
     this.cache.featuredEvents = featured.list;
-    this.cache.upcomingEvents = upcoming.list;
     publishCacheChange('home');
   }
 
-  /** Remove a deleted or unpublished event from both home lists. */
+  /** Remove a deleted or unpublished event from home. */
   static removeEvent(eventId: string): void {
     if (!this.cache) return;
 
-    const featured = this.cache.featuredEvents.filter((item) => item?.id !== eventId);
-    const upcoming = this.cache.upcomingEvents.filter((item) => item?.id !== eventId);
-    if (
-      featured.length === this.cache.featuredEvents.length &&
-      upcoming.length === this.cache.upcomingEvents.length
-    ) {
+    const featured = this.cache.featuredEvents.filter((item: any) => item?.id !== eventId);
+    if (featured.length === this.cache.featuredEvents.length) {
       return;
     }
 
     this.cache.featuredEvents = featured;
-    this.cache.upcomingEvents = upcoming;
     publishCacheChange('home');
   }
 

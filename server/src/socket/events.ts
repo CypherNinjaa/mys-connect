@@ -52,6 +52,9 @@ export const SOCKET_EVENTS = {
   // Dashboard counters
   DASHBOARD_UPDATED: 'dashboard:updated',
 
+  // Testimonials
+  TESTIMONY_UPDATED: 'testimony:updated',
+
   // Per-user notification mirror of an FCM push
   NOTIFICATION_NEW: 'notification:new',
 
@@ -188,6 +191,11 @@ export interface DashboardCountersPayload extends SocketEnvelope {
   totalRegistrations?: number;
 }
 
+export interface TestimonyPayload extends SocketEnvelope {
+  id?: string;
+  action?: 'created' | 'updated' | 'deleted' | 'reordered';
+}
+
 export interface NotificationPayload extends SocketEnvelope {
   /**
    * Row id, when the caller has one.
@@ -253,6 +261,7 @@ export interface ServerToClientEvents {
   [SOCKET_EVENTS.MEMBER_ROLE_CHANGED]: (p: MemberPayload) => void;
 
   [SOCKET_EVENTS.DASHBOARD_UPDATED]: (p: DashboardCountersPayload) => void;
+  [SOCKET_EVENTS.TESTIMONY_UPDATED]: (p: TestimonyPayload) => void;
   [SOCKET_EVENTS.NOTIFICATION_NEW]: (p: NotificationPayload) => void;
   [SOCKET_EVENTS.CONNECTION_READY]: (p: ConnectionReadyPayload) => void;
 }
