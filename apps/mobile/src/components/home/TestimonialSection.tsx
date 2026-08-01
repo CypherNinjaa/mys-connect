@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Image,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   Dimensions,
   Modal,
+  ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
@@ -26,21 +29,79 @@ interface TestimonialSectionProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - Spacing.md * 2;
+// Match exact content width of Home Screen (paddingHorizontal: 16 on home)
+const CAROUSEL_WIDTH = SCREEN_WIDTH - 32;
 
 export function TestimonialSection({ testimonies }: TestimonialSectionProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [selectedTestimony, setSelectedTestimony] = useState<TestimonyItem | null>(null);
+  const [isUserInteracting, setIsUserInteracting] = useState(false);
 
-  if (!testimonies || testimonies.length === 0) {
+  const flatListRef = useRef<FlatList>(null);
+  const userInteractionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const items = testimonies || [];
+
+  // Auto Infinite Carousel - slides every 3.5s, pauses when user touches/scrolls
+  useEffect(() => {
+    if (items.length <= 1 || isUserInteracting) return;
+
+    const interval = setInterval(() => {
+      setActiveIndex((prevIndex) => {
+        const nextIndex = (prevIndex + 1) % items.length;
+        try {
+          flatListRef.current?.scrollToIndex({
+            index: nextIndex,
+            animated: true,
+          });
+        } catch {
+          // Ignore range errors
+        }
+        return nextIndex;
+      });
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, [items.length, isUserInteracting]);
+
+  // Clean up user interaction timer on unmount
+  useEffect(() => {
+    return () => {
+      if (userInteractionTimerRef.current) {
+        clearTimeout(userInteractionTimerRef.current);
+      }
+    };
+  }, []);
+
+  if (items.length === 0) {
     return null;
   }
 
-  const handleScroll = (event: any) => {
-    const slide = Math.round(event.nativeEvent.contentOffset.x / CARD_WIDTH);
-    if (slide !== activeIndex && slide >= 0 && slide < testimonies.length) {
-      setActiveIndex(slide);
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const slideSize = event.nativeEvent.layoutMeasurement.width;
+    if (slideSize > 0) {
+      const index = Math.round(event.nativeEvent.contentOffset.x / slideSize);
+      if (index >= 0 && index < items.length && index !== activeIndex) {
+        setActiveIndex(index);
+      }
     }
+  };
+
+  const handleScrollBeginDrag = () => {
+    setIsUserInteracting(true);
+    if (userInteractionTimerRef.current) {
+      clearTimeout(userInteractionTimerRef.current);
+    }
+  };
+
+  const handleScrollEndDrag = () => {
+    // Resume auto-scroll 5 seconds after user finishes dragging
+    if (userInteractionTimerRef.current) {
+      clearTimeout(userInteractionTimerRef.current);
+    }
+    userInteractionTimerRef.current = setTimeout(() => {
+      setIsUserInteracting(false);
+    }, 5000);
   };
 
   return (
@@ -58,77 +119,87 @@ export function TestimonialSection({ testimonies }: TestimonialSectionProps) {
         </View>
       </View>
 
-      {/* Carousel ScrollView */}
-      <ScrollView
+      {/* Auto Infinite FlatList Carousel */}
+      <FlatList
+        ref={flatListRef}
+        data={items}
+        keyExtractor={(item) => item.id}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
         scrollEventThrottle={16}
-        snapToInterval={CARD_WIDTH}
+        snapToInterval={CAROUSEL_WIDTH}
         decelerationRate="fast"
-        contentContainerStyle={styles.scrollContent}
-      >
-        {testimonies.map((item) => {
+        getItemLayout={(_, index) => ({
+          length: CAROUSEL_WIDTH,
+          offset: CAROUSEL_WIDTH * index,
+          index,
+        })}
+        renderItem={({ item }) => {
           const isLongText = item.content.length > 180;
           const displayContent = isLongText
             ? `${item.content.substring(0, 180)}...`
             : item.content;
 
           return (
-            <View key={item.id} style={[styles.card, { width: CARD_WIDTH }]}>
-              {/* Top Quote Icon */}
-              <View style={styles.quoteIconBadge}>
-                <Ionicons name="chatbox-ellipses" size={24} color="#D4A017" />
-              </View>
+            <View style={styles.cardContainer}>
+              <View style={styles.card}>
+                {/* Top Quote Icon */}
+                <View style={styles.quoteIconBadge}>
+                  <Ionicons name="chatbox-ellipses" size={24} color="#D4A017" />
+                </View>
 
-              {/* Quote Content */}
-              <Text style={styles.quoteText}>{displayContent}</Text>
+                {/* Quote Content */}
+                <Text style={styles.quoteText}>{displayContent}</Text>
 
-              {isLongText && (
-                <TouchableOpacity
-                  onPress={() => setSelectedTestimony(item)}
-                  activeOpacity={0.7}
-                  style={styles.readMoreBtn}
-                >
-                  <Text style={styles.readMoreText}>Read Full Message</Text>
-                  <Ionicons name="chevron-forward" size={14} color="#6B1D2A" />
-                </TouchableOpacity>
-              )}
-
-              {/* Divider */}
-              <View style={styles.divider} />
-
-              {/* Author Footer */}
-              <View style={styles.authorRow}>
-                {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={styles.avatarImage} />
-                ) : (
-                  <View style={styles.avatarFallback}>
-                    <Text style={styles.avatarInitial}>{item.authorName[0] || 'U'}</Text>
-                  </View>
+                {isLongText && (
+                  <TouchableOpacity
+                    onPress={() => setSelectedTestimony(item)}
+                    activeOpacity={0.7}
+                    style={styles.readMoreBtn}
+                  >
+                    <Text style={styles.readMoreText}>Read Full Message</Text>
+                    <Ionicons name="chevron-forward" size={14} color="#6B1D2A" />
+                  </TouchableOpacity>
                 )}
 
-                <View style={styles.authorInfo}>
-                  <Text style={styles.authorName} numberOfLines={1}>
-                    {item.authorName}
-                  </Text>
-                  {item.designation && (
-                    <Text style={styles.authorDesignation} numberOfLines={1}>
-                      {item.designation}
-                    </Text>
+                {/* Divider */}
+                <View style={styles.divider} />
+
+                {/* Author Footer */}
+                <View style={styles.authorRow}>
+                  {item.imageUrl ? (
+                    <Image source={{ uri: item.imageUrl }} style={styles.avatarImage} />
+                  ) : (
+                    <View style={styles.avatarFallback}>
+                      <Text style={styles.avatarInitial}>{item.authorName[0] || 'U'}</Text>
+                    </View>
                   )}
+
+                  <View style={styles.authorInfo}>
+                    <Text style={styles.authorName} numberOfLines={1}>
+                      {item.authorName}
+                    </Text>
+                    {item.designation && (
+                      <Text style={styles.authorDesignation} numberOfLines={1}>
+                        {item.designation}
+                      </Text>
+                    )}
+                  </View>
                 </View>
               </View>
             </View>
           );
-        })}
-      </ScrollView>
+        }}
+      />
 
       {/* Paginated Dots */}
-      {testimonies.length > 1 && (
+      {items.length > 1 && (
         <View style={styles.dotsContainer}>
-          {testimonies.map((_, idx) => (
+          {items.map((_, idx) => (
             <View
               key={idx}
               style={[styles.dot, idx === activeIndex ? styles.activeDot : styles.inactiveDot]}
@@ -199,7 +270,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
     marginBottom: Spacing.sm,
   },
   titleContainer: {
@@ -227,14 +297,13 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
     marginTop: 1,
   },
-  scrollContent: {
-    paddingHorizontal: Spacing.md,
+  cardContainer: {
+    width: CAROUSEL_WIDTH,
   },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: Spacing.lg,
-    marginRight: Spacing.md,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     elevation: 3,
@@ -314,7 +383,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 6,
-    marginTop: 12,
+    marginTop: 14,
   },
   dot: {
     height: 6,
