@@ -48,6 +48,44 @@ export type BloodGroup =
   | 'O_POSITIVE'
   | 'O_NEGATIVE';
 
+/**
+ * The member's post within MYS. Distinct from `MemberProfile.designation`,
+ * which is their job title at their own company.
+ */
+export type MysDesignation =
+  | 'PRESIDENT'
+  | 'SECRETARY'
+  | 'IMMEDIATE_PAST_PRESIDENT'
+  | 'PAST_PRESIDENT'
+  | 'PAST_SECRETARY'
+  | 'EXECUTIVE_MEMBER'
+  | 'JOINT_SECRETARY'
+  | 'INVITEES'
+  | 'VICE_PRESIDENT'
+  | 'TREASURER'
+  | 'ORGANIZATION_MINISTER';
+
+/** Picker options for MysDesignation — array order is the order shown. */
+export const MYS_DESIGNATIONS: { label: string; value: MysDesignation }[] = [
+  { label: 'President', value: 'PRESIDENT' },
+  { label: 'Secretary', value: 'SECRETARY' },
+  { label: 'Immediate Past President', value: 'IMMEDIATE_PAST_PRESIDENT' },
+  { label: 'Past President', value: 'PAST_PRESIDENT' },
+  { label: 'Past Secretary', value: 'PAST_SECRETARY' },
+  { label: 'Executive Member', value: 'EXECUTIVE_MEMBER' },
+  { label: 'Joint Secretary', value: 'JOINT_SECRETARY' },
+  { label: 'Invitees', value: 'INVITEES' },
+  { label: 'Vice President', value: 'VICE_PRESIDENT' },
+  { label: 'Treasurer', value: 'TREASURER' },
+  { label: 'Organization Minister', value: 'ORGANIZATION_MINISTER' },
+];
+
+/** Human-readable label for a stored designation, or null when unset. */
+export function mysDesignationLabel(value?: MysDesignation | null): string | null {
+  if (!value) return null;
+  return MYS_DESIGNATIONS.find((d) => d.value === value)?.label ?? null;
+}
+
 export interface MemberCity {
   id: string;
   name: string;
@@ -72,6 +110,7 @@ export interface MemberProfile {
   occupation?: string | null;
   organization?: string | null;
   designation?: string | null;
+  mysDesignation?: MysDesignation | null;
   bio?: string | null;
 }
 
@@ -105,6 +144,8 @@ export interface RegisterProfileData {
   occupation?: string;
   organization?: string;
   designation?: string;
+  /** `''` clears an existing post; omit the key to leave it untouched. */
+  mysDesignation?: MysDesignation | '';
   bio?: string;
 }
 

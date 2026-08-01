@@ -17,10 +17,17 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing } from '../../constants/theme';
 import { useCustomAlert } from '../../context/CustomAlertContext';
-import { ApiService, RegisterProfileData } from '../../services/api';
+import {
+  ApiService,
+  RegisterProfileData,
+  MysDesignation,
+  MYS_DESIGNATIONS,
+  mysDesignationLabel,
+} from '../../services/api';
 import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
 import { ProfileSkeleton } from '../../components/ui/SkeletonLoader';
 import { CloudinaryMedia } from '../../components/ui/CloudinaryMedia';
+import { Dropdown } from '../../components/ui/Dropdown';
 
 const BLOOD_GROUPS = [
   { label: 'A+', value: 'A_POSITIVE' },
@@ -47,7 +54,9 @@ export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
   const [cities, setCities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeModal, setActiveModal] = useState<'PERSONAL' | 'ADDRESS' | 'BUSINESS' | null>(null);
+  const [activeModal, setActiveModal] = useState<
+    'PERSONAL' | 'ADDRESS' | 'BUSINESS' | 'MYS' | null
+  >(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -82,6 +91,8 @@ export default function ProfileScreen() {
   const [occupation, setOccupation] = useState('');
   const [organization, setOrganization] = useState('');
   const [designation, setDesignation] = useState('');
+  // MYS post — separate from the business `designation` above.
+  const [mysDesignation, setMysDesignation] = useState<MysDesignation | null>(null);
 
   const loadProfile = async () => {
     try {
@@ -107,6 +118,7 @@ export default function ProfileScreen() {
             setOccupation(data.profile.occupation || '');
             setOrganization(data.profile.organization || '');
             setDesignation(data.profile.designation || '');
+            setMysDesignation(data.profile.mysDesignation || null);
           }
         }
       }
@@ -299,6 +311,8 @@ export default function ProfileScreen() {
         occupation: occupation.trim() || undefined,
         organization: organization.trim() || undefined,
         designation: designation.trim() || undefined,
+        // '' is the explicit "clear my post" signal; the server maps it to null.
+        mysDesignation: mysDesignation ?? '',
       };
 
       const result = await ApiService.registerProfile(token, payload);
@@ -345,6 +359,7 @@ export default function ProfileScreen() {
   const profile = user?.profile;
   const displayName = user?.fullName || (profile?.firstName ? `${profile.firstName} ${profile.lastName}` : 'Member Profile');
   const memberIdStr = user?.memberId || 'MYS/01234';
+  const mysDesignationText = mysDesignationLabel(profile?.mysDesignation);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -368,6 +383,14 @@ export default function ProfileScreen() {
 
         <Text style={styles.displayNameText}>{displayName}</Text>
         <Text style={styles.memberIdText}>Member ID: {memberIdStr}</Text>
+
+        {/* MYS post — only office bearers and invitees have one. */}
+        {mysDesignationText && (
+          <View style={styles.designationBadge}>
+            <Ionicons name="ribbon" size={13} color={Colors.primary[500]} />
+            <Text style={styles.designationBadgeText}>{mysDesignationText}</Text>
+          </View>
+        )}
 
         <View style={styles.activeMemberBadge}>
           <Text style={styles.activeMemberBadgeText}>
@@ -418,7 +441,19 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
         </TouchableOpacity>
 
-        {/* 4. Change Password */}
+        {/* 4. MYS Designation */}
+        <TouchableOpacity style={styles.menuRow} onPress={() => setActiveModal('MYS')}>
+          <View style={styles.menuIconCircle}>
+            <Ionicons name="ribbon-outline" size={20} color={Colors.primary[500]} />
+          </View>
+          <View style={styles.menuTextContent}>
+            <Text style={styles.menuTitle}> Designation</Text>
+            <Text style={styles.menuSub}>{mysDesignationText || 'Add your post in MYS'}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
+        </TouchableOpacity>
+
+        {/* 5. Change Password */}
         <TouchableOpacity
           style={styles.menuRow}
           onPress={() => router.push('/(member)/change-password')}
@@ -433,7 +468,7 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
         </TouchableOpacity>
 
-        {/* 5. Downloads */}
+        {/* 6. Downloads */}
         <TouchableOpacity
           style={styles.menuRow}
           onPress={() => router.push('/(member)/downloads')}
@@ -448,7 +483,7 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={Colors.neutral[400]} />
         </TouchableOpacity>
 
-        {/* 6. Settings */}
+        {/* 7. Settings */}
         <TouchableOpacity
           style={[styles.menuRow, { borderBottomWidth: 0 }]}
           onPress={() => router.push('/(member)/settings')}
@@ -482,6 +517,7 @@ export default function ProfileScreen() {
                 {activeModal === 'PERSONAL' && 'Edit Personal Info'}
                 {activeModal === 'ADDRESS' && 'Edit Address Details'}
                 {activeModal === 'BUSINESS' && 'Edit Business / Occupation'}
+                {activeModal === 'MYS' && 'Edit MYS Designation'}
               </Text>
               <TouchableOpacity onPress={() => setActiveModal(null)}>
                 <Ionicons name="close" size={24} color={Colors.text.primary} />
@@ -611,6 +647,27 @@ export default function ProfileScreen() {
                 </>
               )}
 
+              {activeModal === 'MYS' && (
+                <>
+                  <Text style={styles.sectionHint}>
+                    How you are associated with MYS. This is your post in the sangathan — your
+                    business details stay separate.
+                  </Text>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Designation in MYS</Text>
+                    <Dropdown
+                      options={MYS_DESIGNATIONS}
+                      value={mysDesignation}
+                      onChange={setMysDesignation}
+                      placeholder="Select your designation"
+                      allowClear
+                      clearLabel="No designation"
+                      accessibilityLabel="Designation in MYS"
+                    />
+                  </View>
+                </>
+              )}
+
               <TouchableOpacity
                 style={[styles.saveBtn, isSaving && styles.btnDisabled]}
                 onPress={handleSaveProfile}
@@ -660,6 +717,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     marginTop: 10,
+  },
+  designationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: Colors.neutral[0],
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  designationBadgeText: {
+    color: Colors.primary[500],
+    fontSize: 12,
+    fontWeight: '700',
   },
   activeMemberBadgeText: {
     color: Colors.secondary[500],
@@ -767,6 +839,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.text.secondary,
     marginBottom: 6,
+  },
+  sectionHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.text.tertiary,
+    marginBottom: 14,
   },
   input: {
     backgroundColor: '#F8F9FA',

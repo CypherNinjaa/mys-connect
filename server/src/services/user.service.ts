@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma';
-import { UserStatus, Gender, BloodGroup } from '@prisma/client';
+import { UserStatus, Gender, BloodGroup, MysDesignation } from '@prisma/client';
 import { AppError } from '../middleware/errorHandler';
 import { registrationRequiresApproval } from '../utils/appSettings';
 
@@ -17,6 +17,8 @@ export interface RegisterProfileInput {
   occupation?: string;
   organization?: string;
   designation?: string;
+  /** MYS post. `null` clears an existing post; `undefined` leaves it untouched. */
+  mysDesignation?: MysDesignation | null;
   bio?: string;
 }
 
@@ -120,6 +122,7 @@ export class UserService {
         occupation: data.occupation,
         organization: data.organization,
         designation: data.designation,
+        mysDesignation: data.mysDesignation,
         bio: data.bio,
       },
       create: {
@@ -137,6 +140,7 @@ export class UserService {
         occupation: data.occupation,
         organization: data.organization,
         designation: data.designation,
+        mysDesignation: data.mysDesignation,
         bio: data.bio,
       },
       include: { city: true },

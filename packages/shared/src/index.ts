@@ -80,6 +80,40 @@ export enum NotificationStatus {
   FAILED = 'FAILED',
 }
 
+/**
+ * How a member is associated with MYS — their post in the sangathan.
+ * Not to be confused with ProfileDTO.designation, which is the member's
+ * job title at their own company.
+ */
+export enum MysDesignation {
+  PRESIDENT = 'PRESIDENT',
+  SECRETARY = 'SECRETARY',
+  IMMEDIATE_PAST_PRESIDENT = 'IMMEDIATE_PAST_PRESIDENT',
+  PAST_PRESIDENT = 'PAST_PRESIDENT',
+  PAST_SECRETARY = 'PAST_SECRETARY',
+  EXECUTIVE_MEMBER = 'EXECUTIVE_MEMBER',
+  JOINT_SECRETARY = 'JOINT_SECRETARY',
+  INVITEES = 'INVITEES',
+  VICE_PRESIDENT = 'VICE_PRESIDENT',
+  TREASURER = 'TREASURER',
+  ORGANIZATION_MINISTER = 'ORGANIZATION_MINISTER',
+}
+
+/** Display labels for MysDesignation, in the order they should be listed. */
+export const MYS_DESIGNATION_LABELS: Record<MysDesignation, string> = {
+  [MysDesignation.PRESIDENT]: 'President',
+  [MysDesignation.SECRETARY]: 'Secretary',
+  [MysDesignation.IMMEDIATE_PAST_PRESIDENT]: 'Immediate Past President',
+  [MysDesignation.PAST_PRESIDENT]: 'Past President',
+  [MysDesignation.PAST_SECRETARY]: 'Past Secretary',
+  [MysDesignation.EXECUTIVE_MEMBER]: 'Executive Member',
+  [MysDesignation.JOINT_SECRETARY]: 'Joint Secretary',
+  [MysDesignation.INVITEES]: 'Invitees',
+  [MysDesignation.VICE_PRESIDENT]: 'Vice President',
+  [MysDesignation.TREASURER]: 'Treasurer',
+  [MysDesignation.ORGANIZATION_MINISTER]: 'Organization Minister',
+};
+
 // ═══════════════════════════════════════════════════════════
 // DTOs — Data Transfer Objects
 // ═══════════════════════════════════════════════════════════
@@ -109,6 +143,7 @@ export interface ProfileDTO {
   occupation: string | null;
   organization: string | null;
   designation: string | null;
+  mysDesignation: MysDesignation | null;
   bio: string | null;
   city?: CityDTO | null;
 }

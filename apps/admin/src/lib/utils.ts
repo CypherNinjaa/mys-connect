@@ -65,3 +65,25 @@ export function getRoleColor(role: string): string {
       return 'bg-gray-100 text-gray-800';
   }
 }
+
+/**
+ * Human-readable label for a MysDesignation enum value.
+ * Returns null when the member holds no post.
+ */
+export function getMysDesignationLabel(value?: string | null): string | null {
+  if (!value) return null;
+  const labels: Record<string, string> = {
+    PRESIDENT: 'President',
+    SECRETARY: 'Secretary',
+    IMMEDIATE_PAST_PRESIDENT: 'Immediate Past President',
+    PAST_PRESIDENT: 'Past President',
+    PAST_SECRETARY: 'Past Secretary',
+    EXECUTIVE_MEMBER: 'Executive Member',
+    JOINT_SECRETARY: 'Joint Secretary',
+    INVITEES: 'Invitees',
+    VICE_PRESIDENT: 'Vice President',
+    TREASURER: 'Treasurer',
+    ORGANIZATION_MINISTER: 'Organization Minister',
+  };
+  return labels[value] ?? null;
+}

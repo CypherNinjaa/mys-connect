@@ -4,7 +4,7 @@ import { use, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getMemberDetails, updateUserStatus, type UserData } from '@/lib/api';
-import { formatDate, getInitials, getRoleColor, getStatusColor } from '@/lib/utils';
+import { formatDate, getInitials, getRoleColor, getStatusColor, getMysDesignationLabel } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -261,8 +261,12 @@ export default function MemberDetailPage({ params }: { params: Promise<{ id: str
                   <p className="font-bold text-slate-900 text-sm mt-0.5">{member.profile?.organization || '—'}</p>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium">Designation</span>
+                  <span className="text-slate-400 font-medium">Designation (Business)</span>
                   <p className="font-bold text-slate-900 text-sm mt-0.5">{member.profile?.designation || '—'}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium">MYS Designation</span>
+                  <p className="font-bold text-slate-900 text-sm mt-0.5">{getMysDesignationLabel(member.profile?.mysDesignation) || '—'}</p>
                 </div>
                 <div className="col-span-2">
                   <span className="text-slate-400 font-medium">Bio</span>

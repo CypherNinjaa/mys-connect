@@ -403,6 +403,7 @@ export interface UserData {
     occupation?: string;
     organization?: string;
     designation?: string;
+    mysDesignation?: string;
     bio?: string;
   };
   completionScore?: number;

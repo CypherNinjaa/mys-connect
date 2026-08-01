@@ -13,7 +13,7 @@ import {
   type UserData,
   type MemberStatsData,
 } from '@/lib/api';
-import { formatDate, getStatusColor, getRoleColor, getInitials } from '@/lib/utils';
+import { formatDate, getStatusColor, getRoleColor, getInitials, getMysDesignationLabel } from '@/lib/utils';
 import { MemberProfileModal } from '@/components/members/MemberProfileModal';
 import { CreateMemberModal } from '@/components/members/CreateMemberModal';
 import { ExportMembersModal } from '@/components/members/ExportMembersModal';
@@ -391,6 +391,7 @@ export default function MembersPage() {
                 <th className="px-4 py-3.5">Member ID</th>
                 <th className="px-4 py-3.5">Contact</th>
                 <th className="px-4 py-3.5">Role</th>
+                <th className="px-4 py-3.5">Designation</th>
                 <th className="px-4 py-3.5">Status</th>
                 <th className="px-4 py-3.5">Chapter</th>
                 <th className="px-4 py-3.5">Joined</th>
@@ -406,6 +407,7 @@ export default function MembersPage() {
                     <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-20" /></td>
                     <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-28" /></td>
                     <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-16" /></td>
+                    <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-24" /></td>
                     <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-16" /></td>
                     <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-20" /></td>
                     <td className="px-4 py-4"><div className="h-4 bg-slate-200 rounded w-20" /></td>
@@ -414,7 +416,7 @@ export default function MembersPage() {
                 ))
               ) : members.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-16 text-center text-slate-400">
+                  <td colSpan={10} className="px-6 py-16 text-center text-slate-400">
                     No members match the selected search or filters.
                   </td>
                 </tr>
@@ -477,6 +479,17 @@ export default function MembersPage() {
                         <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${getRoleColor(member.role)}`}>
                           {member.role}
                         </span>
+                      </td>
+
+                      {/* MYS post — most members hold none, hence the dash. */}
+                      <td className="px-4 py-3.5">
+                        {getMysDesignationLabel(member.profile?.mysDesignation) ? (
+                          <span className="inline-block text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-[#7A0E16]/10 text-[#7A0E16] whitespace-nowrap">
+                            {getMysDesignationLabel(member.profile?.mysDesignation)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
                       </td>
 
                       <td className="px-4 py-3.5">

@@ -3,7 +3,7 @@ import { getAuth } from '@clerk/express';
 import { UserService } from '../services/user.service';
 import { uploadToCloudinary } from '../utils/cloudinary';
 import { AppError } from '../middleware/errorHandler';
-import { BloodGroup, Gender } from '@prisma/client';
+import { BloodGroup, Gender, MysDesignation } from '@prisma/client';
 import { prisma } from '../utils/prisma';
 import { registrationRequiresApproval } from '../utils/appSettings';
 import { z } from 'zod';
@@ -29,6 +29,12 @@ const registrationSchema = z.object({
   occupation: z.string().trim().max(100).optional(),
   organization: z.string().trim().max(200).optional(),
   designation: z.string().trim().max(100).optional(),
+  // MYS post, separate from the business `designation` above. An empty string
+  // means "clear it" — members who step down need a way back to no post.
+  mysDesignation: z
+    .union([z.nativeEnum(MysDesignation), z.literal('')])
+    .transform((value) => (value === '' ? null : value))
+    .optional(),
   bio: optionalText,
 });
 

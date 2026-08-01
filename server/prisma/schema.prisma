@@ -97,6 +97,23 @@ enum AlbumCategory {
   OTHERS
 }
 
+/// How a member is associated with MYS as an organisation — their post in the
+/// sangathan. Distinct from Profile.designation, which is the member's job title
+/// at their own company. Declaration order is the order shown in the pickers.
+enum MysDesignation {
+  PRESIDENT
+  SECRETARY
+  IMMEDIATE_PAST_PRESIDENT
+  PAST_PRESIDENT
+  PAST_SECRETARY
+  EXECUTIVE_MEMBER
+  JOINT_SECRETARY
+  INVITEES
+  VICE_PRESIDENT
+  TREASURER
+  ORGANIZATION_MINISTER
+}
+
 // ═══════════════════════════════════════════════════════════
 // MODELS
 // ═══════════════════════════════════════════════════════════
@@ -151,10 +168,15 @@ model Profile {
   state   String? @default("Jharkhand")
   pinCode String?
 
-  // Professional
+  // Professional — the member's own job/business. `designation` here is their
+  // company title (Partner, Director...), NOT their MYS post.
   occupation   String?
   organization String?
   designation  String?
+
+  // MYS association — the member's post within the sangathan. Optional because
+  // most members hold no post; only office bearers and invitees have one.
+  mysDesignation MysDesignation?
 
   // Social
   bio String?

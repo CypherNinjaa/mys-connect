@@ -11,7 +11,13 @@ import {
 import { useAuth } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Colors, Spacing } from '../../constants/theme';
-import { ApiService, RegisterProfileData } from '../../services/api';
+import {
+  ApiService,
+  RegisterProfileData,
+  MysDesignation,
+  MYS_DESIGNATIONS,
+} from '../../services/api';
+import { Dropdown } from '../../components/ui/Dropdown';
 
 const BLOOD_GROUPS = [
   { label: 'A+', value: 'A_POSITIVE' },
@@ -55,6 +61,9 @@ export default function CompleteProfileScreen() {
   const [occupation, setOccupation] = useState('');
   const [organization, setOrganization] = useState('');
   const [designation, setDesignation] = useState('');
+
+  // MYS post — the member's role in the sangathan, not their job title above.
+  const [mysDesignation, setMysDesignation] = useState<MysDesignation | null>(null);
 
   // Fetch Cities on mount
   useEffect(() => {
@@ -131,6 +140,8 @@ export default function CompleteProfileScreen() {
         occupation: occupation.trim() || undefined,
         organization: organization.trim() || undefined,
         designation: designation.trim() || undefined,
+        // Most new members hold no post, so only send the key when one is picked.
+        mysDesignation: mysDesignation ?? undefined,
       };
 
       await ApiService.registerProfile(token, profilePayload);
@@ -335,6 +346,22 @@ export default function CompleteProfileScreen() {
               onChangeText={setDesignation}
             />
           </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Designation in MYS</Text>
+            <Text style={styles.hint}>
+              Your post in the sangathan. Leave it blank if you do not hold one.
+            </Text>
+            <Dropdown
+              options={MYS_DESIGNATIONS}
+              value={mysDesignation}
+              onChange={setMysDesignation}
+              placeholder="Select your designation"
+              allowClear
+              clearLabel="No designation"
+              accessibilityLabel="Designation in MYS"
+            />
+          </View>
         </View>
       )}
 
@@ -443,6 +470,12 @@ const styles = StyleSheet.create({
   textArea: {
     height: 80,
     textAlignVertical: 'top',
+  },
+  hint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.text.tertiary,
+    marginBottom: 8,
   },
   chipRow: {
     flexDirection: 'row',

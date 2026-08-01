@@ -69,6 +69,7 @@ export class MemberService {
               occupation: true,
               organization: true,
               designation: true,
+              mysDesignation: true,
               city: { select: { id: true, name: true, state: true } },
               state: true,
             },

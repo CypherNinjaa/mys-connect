@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, Download, FileSpreadsheet, FileText, Code2, CheckCircle2 } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, getMysDesignationLabel } from '@/lib/utils';
 import type { UserData } from '@/lib/api';
 
 interface ExportMembersModalProps {
@@ -56,6 +56,7 @@ export function ExportMembersModal({
               <td style="padding: 8px; border: 1px solid #ddd;">${m.email}</td>
               <td style="padding: 8px; border: 1px solid #ddd;">${m.phone || m.profile?.phone || '—'}</td>
               <td style="padding: 8px; border: 1px solid #ddd;">${m.role}</td>
+              <td style="padding: 8px; border: 1px solid #ddd;">${getMysDesignationLabel(m.profile?.mysDesignation) || '—'}</td>
               <td style="padding: 8px; border: 1px solid #ddd;">${m.status}</td>
               <td style="padding: 8px; border: 1px solid #ddd;">${m.profile?.city?.name || 'Ranchi'}</td>
               <td style="padding: 8px; border: 1px solid #ddd;">${formatDate(m.createdAt)}</td>
@@ -88,6 +89,7 @@ export function ExportMembersModal({
                     <th>Email</th>
                     <th>Phone</th>
                     <th>Role</th>
+                    <th>MYS Designation</th>
                     <th>Status</th>
                     <th>Chapter</th>
                     <th>Joined Date</th>
@@ -110,7 +112,8 @@ export function ExportMembersModal({
     }
 
     // CSV / Excel export
-    const headers = ['Member ID', 'First Name', 'Last Name', 'Email', 'Phone', 'Role', 'Status', 'Occupation', 'City', 'Joined Date'];
+    // Column order mirrors the members table so a reader can match them up.
+    const headers = ['Member ID', 'First Name', 'Last Name', 'Email', 'Phone', 'Role', 'MYS Designation', 'Status', 'Occupation', 'City', 'Joined Date'];
     const rows = dataToExport.map((m) => [
       m.memberId || 'N/A',
       m.profile?.firstName || '',
@@ -118,6 +121,7 @@ export function ExportMembersModal({
       m.email,
       m.phone || m.profile?.phone || '',
       m.role,
+      getMysDesignationLabel(m.profile?.mysDesignation) || '',
       m.status,
       m.profile?.occupation || '',
       m.profile?.city?.name || 'Ranchi',
