@@ -319,28 +319,80 @@ export class AdminService {
   }
 
   /**
-   * Update user role (e.g. elevate to ADMIN or MODERATOR)
+   * Update user role (SUPER_ADMIN only - resolved at controller level)
    */
   static async updateUserRole(targetUserId: string, newRole: UserRole, adminUserId: string) {
-    const user = await prisma.user.update({
+    const user = await prisma.user.findUnique({
       where: { id: targetUserId },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    const previousRole = user.role;
+    logger.info(`Admin ${adminUserId} changing user ${targetUserId} role from ${previousRole} -> ${newRole}`);
+
+    // Resolve real Clerk User ID by email if current clerkId is synthetic
+    let realClerkId = user.clerkId;
+    if (user.email) {
+      try {
+        const clerkUsers = await clerkClient.users.getUserList({ emailAddress: [user.email] });
+        if (clerkUsers.data && clerkUsers.data.length > 0) {
+          realClerkId = clerkUsers.data[0].id;
+          logger.info(`Resolved real Clerk User ID ${realClerkId} for member ${user.email}`);
+        }
+      } catch (clerkErr) {
+        logger.warn(`Could not resolve real Clerk User ID for ${user.email}:`, clerkErr);
+      }
+    }
+
+    // Update role in ALL matching database records (by ID, email, or clerkId)
+    const matchingOrs: any[] = [{ id: targetUserId }];
+    if (user.email) matchingOrs.push({ email: user.email });
+    if (realClerkId) matchingOrs.push({ clerkId: realClerkId });
+
+    await prisma.user.updateMany({
+      where: { OR: matchingOrs },
       data: { role: newRole },
     });
 
-    await updateClerkUserMetadata(user.clerkId, { role: newRole });
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: { profile: { include: { city: true } } },
+    });
 
+    // Update Clerk User publicMetadata
+    if (realClerkId) {
+      try {
+        await updateClerkUserMetadata(realClerkId, { role: newRole });
+        logger.info(`Successfully updated Clerk publicMetadata role to ${newRole} for ${realClerkId} (${user.email})`);
+      } catch (err) {
+        logger.error(`Failed to update Clerk publicMetadata role for ${realClerkId}:`, err);
+      }
+    }
+
+    // Log Audit Trail
     await prisma.auditLog.create({
       data: {
         userId: adminUserId,
         action: `USER_ROLE_CHANGE_${newRole}`,
         entity: 'User',
         entityId: targetUserId,
+        metadata: {
+          previousRole,
+          newRole,
+          targetEmail: user.email,
+        },
       },
     });
 
-    emitMemberRoleChanged(user, adminUserId);
+    if (updatedUser) {
+      emitMemberRoleChanged(updatedUser, adminUserId);
+    }
 
-    return user;
+    return updatedUser || user;
   }
 
   /**

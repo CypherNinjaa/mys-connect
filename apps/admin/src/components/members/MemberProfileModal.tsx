@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, useUser } from '@clerk/nextjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMemberDetails, updateUserStatus, type UserData } from '@/lib/api';
+import { getMemberDetails, updateUserStatus, updateUserRole, type UserData } from '@/lib/api';
 import { formatDate, getInitials, getRoleColor, getStatusColor, getMysDesignationLabel } from '@/lib/utils';
 import {
   X,
@@ -25,6 +25,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
+const ROLES = ['SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'VOLUNTEER', 'MEMBER', 'GUEST'];
+
 interface MemberProfileModalProps {
   memberId: string | null;
   onClose: () => void;
@@ -32,8 +34,12 @@ interface MemberProfileModalProps {
 
 export function MemberProfileModal({ memberId, onClose }: MemberProfileModalProps) {
   const { getToken } = useAuth();
+  const { user: currentClerkUser } = useUser();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'overview' | 'personal' | 'professional' | 'address' | 'audit' | 'events'>('overview');
+
+  const currentClerkRole = (currentClerkUser?.publicMetadata?.role as string) || '';
+  const isSuperAdmin = currentClerkRole === 'SUPER_ADMIN';
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['member-detail', memberId],
@@ -53,6 +59,20 @@ export function MemberProfileModal({ memberId, onClose }: MemberProfileModalProp
       const token = await getToken();
       if (!token) throw new Error('Not authenticated');
       return updateUserStatus(token, memberId, status, reason);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['member-detail', memberId] });
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: async ({ role }: { role: string }) => {
+      if (!memberId) return;
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+      return updateUserRole(token, memberId, role);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['member-detail', memberId] });
@@ -179,10 +199,34 @@ export function MemberProfileModal({ memberId, onClose }: MemberProfileModalProp
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Re-activate</span>
+                <span>Re-Activate Member</span>
               </button>
             )}
           </div>
+
+          {isSuperAdmin && member && (
+            <div className="flex items-center gap-2 border-l border-slate-200 pl-4 my-0.5">
+              <span className="text-xs font-extrabold text-slate-600">Role:</span>
+              <select
+                value={member.role}
+                onChange={(e) => {
+                  const r = e.target.value;
+                  if (r && r !== member.role) {
+                    roleMutation.mutate({ role: r });
+                  }
+                }}
+                disabled={roleMutation.isPending}
+                className={`text-xs font-bold px-2.5 py-1 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7A0E16]/30 cursor-pointer transition-all ${getRoleColor(member.role)}`}
+                title="Super Admin: Update Member Role"
+              >
+                {ROLES.map((r) => (
+                  <option key={r} value={r} className="bg-white text-slate-900 font-semibold">
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <button
             onClick={() => refetch()}

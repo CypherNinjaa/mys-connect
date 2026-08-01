@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AdminService } from '../services/admin.service';
 import { UserStatus, UserRole, EventStatus, NoticeType } from '@prisma/client';
 import { uploadToCloudinary } from '../utils/cloudinary';
+import { AppError } from '../middleware/errorHandler';
 
 export class AdminController {
   /**
@@ -58,14 +59,22 @@ export class AdminController {
 
   /**
    * POST /api/v1/admin/users/:id/role
-   * Update user role (MEMBER, MODERATOR, ADMIN)
+   * Update user role (SUPER_ADMIN only)
    */
   static async updateUserRole(req: Request, res: Response, next: NextFunction) {
     try {
+      const callerRole = req.userRole || req.user?.role;
+      if (callerRole !== 'SUPER_ADMIN') {
+        throw new AppError('Forbidden: Only SUPER_ADMIN can change member roles.', 403);
+      }
+
       const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const { role } = req.body;
-      const adminUserId = req.user?.id || 'admin';
+      if (!role) {
+        throw new AppError('Role is required', 400);
+      }
 
+      const adminUserId = req.user?.id || 'admin';
       const updatedUser = await AdminService.updateUserRole(id, role as UserRole, adminUserId);
 
       res.json({
@@ -141,6 +150,11 @@ export class AdminController {
    */
   static async bulkUpdateMemberRole(req: Request, res: Response, next: NextFunction) {
     try {
+      const callerRole = req.userRole || req.user?.role;
+      if (callerRole !== 'SUPER_ADMIN') {
+        throw new AppError('Forbidden: Only SUPER_ADMIN can perform bulk role updates.', 403);
+      }
+
       const { userIds, role } = req.body;
       const adminUserId = req.user?.id || 'admin';
       const result = await AdminService.bulkUpdateMemberRole(userIds, role as UserRole, adminUserId);

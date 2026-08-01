@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, useUser } from '@clerk/nextjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getUsers,
@@ -38,6 +38,7 @@ import {
   Check,
   Shield,
   Trash2,
+  Lock,
 } from 'lucide-react';
 
 const STATUSES = ['', 'PENDING', 'ACTIVE', 'DEACTIVATED', 'REJECTED'];
@@ -45,7 +46,11 @@ const ROLES = ['', 'SUPER_ADMIN', 'ADMIN', 'EXECUTIVE', 'VOLUNTEER', 'MEMBER', '
 
 export default function MembersPage() {
   const { getToken } = useAuth();
+  const { user: currentClerkUser } = useUser();
   const queryClient = useQueryClient();
+
+  const currentClerkRole = (currentClerkUser?.publicMetadata?.role as string) || '';
+  const isSuperAdmin = currentClerkRole === 'SUPER_ADMIN';
 
   // Pagination & Filtering state
   const [page, setPage] = useState(1);
@@ -475,10 +480,36 @@ export default function MembersPage() {
                         {member.phone || member.profile?.phone || '—'}
                       </td>
 
+                      {/* Role Column */}
                       <td className="px-4 py-3.5">
-                        <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${getRoleColor(member.role)}`}>
-                          {member.role}
-                        </span>
+                        {isSuperAdmin ? (
+                          <select
+                            value={member.role}
+                            onChange={(e) => {
+                              const newRole = e.target.value;
+                              if (newRole && newRole !== member.role) {
+                                roleMutation.mutate({ id: member.id, role: newRole });
+                              }
+                            }}
+                            disabled={roleMutation.isPending}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold cursor-pointer border border-transparent hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#7A0E16]/30 transition-all ${getRoleColor(member.role)}`}
+                            title="Super Admin: Click to change role"
+                          >
+                            {ROLES.filter(Boolean).map((r) => (
+                              <option key={r} value={r} className="bg-white text-slate-900 font-semibold text-xs">
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full font-bold cursor-not-allowed ${getRoleColor(member.role)}`}
+                            title="Only SUPER_ADMIN can change member roles"
+                          >
+                            {member.role}
+                            <Lock className="w-2.5 h-2.5 opacity-60" />
+                          </span>
+                        )}
                       </td>
 
                       {/* MYS post — most members hold none, hence the dash. */}
@@ -525,6 +556,19 @@ export default function MembersPage() {
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
+
+                          {isSuperAdmin && (
+                            <button
+                              onClick={() => {
+                                setActionModal({ type: 'role', user: member });
+                                setNewValue(member.role);
+                              }}
+                              className="p-1.5 text-amber-600/70 hover:text-amber-700 rounded-lg hover:bg-amber-50 transition-colors"
+                              title="Change Member Role (Super Admin)"
+                            >
+                              <Shield className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -613,10 +657,18 @@ export default function MembersPage() {
               Target Member: <span className="font-bold text-slate-800">{actionModal.user.email}</span>
             </p>
 
+            {actionModal.type === 'role' && !isSuperAdmin && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-2.5 text-amber-800 text-xs font-semibold">
+                <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Only Super Admin (SUPER_ADMIN) has permission to update member roles.</span>
+              </div>
+            )}
+
             <select
               value={newValue}
               onChange={(e) => setNewValue(e.target.value)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#7A0E16]/20"
+              disabled={actionModal.type === 'role' && !isSuperAdmin}
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#7A0E16]/20 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
             >
               {actionModal.type === 'status'
                 ? STATUSES.filter(Boolean).map((s) => (
@@ -659,8 +711,8 @@ export default function MembersPage() {
                     });
                   }
                 }}
-                disabled={statusMutation.isPending || roleMutation.isPending}
-                className="px-4 py-2 text-xs font-bold bg-[#7A0E16] text-white rounded-xl hover:bg-[#600018] disabled:opacity-50"
+                disabled={statusMutation.isPending || roleMutation.isPending || (actionModal.type === 'role' && !isSuperAdmin)}
+                className="px-4 py-2 text-xs font-bold bg-[#7A0E16] text-white rounded-xl hover:bg-[#600018] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {statusMutation.isPending || roleMutation.isPending ? 'Saving...' : 'Save'}
               </button>
