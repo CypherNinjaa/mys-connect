@@ -5,6 +5,7 @@ export interface FeaturedEvent {
   venue: string;
   image: string;
   actionText?: string;
+  isRegistered?: boolean;
 }
 
 export interface QuickAccessItem {

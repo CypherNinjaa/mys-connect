@@ -147,10 +147,36 @@ export function TestimonialSection({ testimonies }: TestimonialSectionProps) {
           return (
             <View style={styles.cardContainer}>
               <View style={styles.card}>
-                {/* Top Quote Icon */}
-                <View style={styles.quoteIconBadge}>
-                  <Ionicons name="chatbox-ellipses" size={24} color="#D4A017" />
+                {/* Top Author Header */}
+                <View style={styles.authorHeaderRow}>
+                  <View style={styles.authorRow}>
+                    {item.imageUrl ? (
+                      <Image source={{ uri: item.imageUrl }} style={styles.avatarImage} />
+                    ) : (
+                      <View style={styles.avatarFallback}>
+                        <Text style={styles.avatarInitial}>{item.authorName[0] || 'U'}</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.authorInfo}>
+                      <Text style={styles.authorName} numberOfLines={1}>
+                        {item.authorName}
+                      </Text>
+                      {item.designation && (
+                        <Text style={styles.authorDesignation} numberOfLines={1}>
+                          {item.designation}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.quoteIconBadge}>
+                    <Ionicons name="chatbox-ellipses" size={22} color="#D4A017" />
+                  </View>
                 </View>
+
+                {/* Divider */}
+                <View style={styles.divider} />
 
                 {/* Quote Content */}
                 <Text style={styles.quoteText}>{displayContent}</Text>
@@ -165,31 +191,6 @@ export function TestimonialSection({ testimonies }: TestimonialSectionProps) {
                     <Ionicons name="chevron-forward" size={14} color="#6B1D2A" />
                   </TouchableOpacity>
                 )}
-
-                {/* Divider */}
-                <View style={styles.divider} />
-
-                {/* Author Footer */}
-                <View style={styles.authorRow}>
-                  {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.avatarImage} />
-                  ) : (
-                    <View style={styles.avatarFallback}>
-                      <Text style={styles.avatarInitial}>{item.authorName[0] || 'U'}</Text>
-                    </View>
-                  )}
-
-                  <View style={styles.authorInfo}>
-                    <Text style={styles.authorName} numberOfLines={1}>
-                      {item.authorName}
-                    </Text>
-                    {item.designation && (
-                      <Text style={styles.authorDesignation} numberOfLines={1}>
-                        {item.designation}
-                      </Text>
-                    )}
-                  </View>
-                </View>
               </View>
             </View>
           );
@@ -337,10 +338,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#EDF2F7',
     marginVertical: 14,
   },
+  authorHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1,
   },
   avatarImage: {
     width: 44,

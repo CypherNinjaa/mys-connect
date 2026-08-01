@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/expo';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ApiService } from '../../services/api';
 import {
@@ -111,7 +111,8 @@ export default function HomeScreen() {
                   evt.coverImageUrl ||
                   evt.bannerUrl ||
                   'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80',
-                actionText: 'Register Now',
+                actionText: evt.isRegistered ? 'Registered' : 'Register Now',
+                isRegistered: Boolean(evt.isRegistered),
               }));
             }
 
@@ -154,14 +155,19 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    // Awaited inside the effect rather than called from its body, so the loader's
-    // setState calls land after the first paint instead of cascading.
     async function run() {
       await loadData(false);
     }
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);
+
+  // Re-sync event registration status whenever user focuses the Home tab
+  useFocusEffect(
+    useCallback(() => {
+      void loadData(false);
+    }, [loadData])
+  );
 
   // Realtime: re-read the patched cache instead of refetching. Only the slices
   // that actually changed will differ, so React bails out of the rest.

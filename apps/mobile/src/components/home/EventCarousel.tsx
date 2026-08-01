@@ -110,11 +110,18 @@ export function EventCarousel({ events, onRegisterPress }: EventCarouselProps) {
                 </View>
 
                 <TouchableOpacity
-                  style={styles.registerBtn}
+                  style={[styles.registerBtn, item.isRegistered && styles.registeredBtn]}
                   onPress={() => onRegisterPress?.(item)}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.registerBtnText}>{item.actionText || 'Register Now'}</Text>
+                  {item.isRegistered ? (
+                    <View style={styles.registeredRow}>
+                      <Ionicons name="checkmark-circle" size={15} color="#276749" style={{ marginRight: 4 }} />
+                      <Text style={styles.registeredBtnText}>Registered</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.registerBtnText}>{item.actionText || 'Register Now'}</Text>
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -233,6 +240,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#6B1D2A',
+  },
+  registeredBtn: {
+    borderColor: '#68D391',
+    backgroundColor: '#F0FFF4',
+  },
+  registeredRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  registeredBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#276749',
   },
   paginationRow: {
     flexDirection: 'row',
