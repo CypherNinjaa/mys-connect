@@ -29,14 +29,20 @@ export function buildCloudinaryUrl(
   const format = options.format || 'auto';
   const quality = options.quality || 'auto';
 
-  const transformParams = `c_${crop},g_${gravity},w_${width},h_${height}/f_${format}/q_${quality}`;
+  // Gravity only applies to fill/crop/thumb/lfill/fill_pad — omit it for fit/scale/pad.
+  const cropSupportsGravity = ['fill', 'crop', 'thumb', 'lfill', 'fill_pad'].includes(crop);
+  const cropParams = cropSupportsGravity
+    ? `c_${crop},g_${gravity},w_${width},h_${height}`
+    : `c_${crop},w_${width},h_${height}`;
+  const transformParams = `${cropParams}/f_${format}/q_${quality}`;
 
   if (match) {
     const baseUrl = match[1];
     let publicPath = match[2];
 
-    // Remove existing transformation prefix if any
-    publicPath = publicPath.replace(/^(c_[^/]+\/|v\d+\/)+/, '');
+    // Strip any transformation the URL already carries, otherwise re-building a
+    // previously-built URL stacks duplicate f_/q_ components onto the new ones.
+    publicPath = publicPath.replace(/^(c_[^/]+\/|g_[^/]+\/|f_[^/]+\/|q_[^/]+\/|v\d+\/)+/, '');
 
     return `${baseUrl}${transformParams}/${publicPath}`;
   }
