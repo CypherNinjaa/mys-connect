@@ -52,6 +52,27 @@ export function Sidebar({
   const pathname = usePathname();
   const { user } = useUser();
 
+  const rawRole = (user?.publicMetadata?.role as string) || (user?.unsafeMetadata?.role as string) || 'ADMIN';
+
+  const formatRoleLabel = (role: string) => {
+    switch (role) {
+      case 'SUPER_ADMIN':
+        return 'Super Admin';
+      case 'ADMIN':
+        return 'Admin';
+      case 'EXECUTIVE':
+        return 'Executive';
+      case 'VOLUNTEER':
+        return 'Volunteer';
+      case 'MEMBER':
+        return 'Member';
+      case 'GUEST':
+        return 'Guest';
+      default:
+        return role ? role.charAt(0).toUpperCase() + role.slice(1).toLowerCase() : 'Administrator';
+    }
+  };
+
   return (
     <>
       {/* Mobile Backdrop */}
@@ -179,7 +200,9 @@ export function Sidebar({
                 <p className="text-xs font-bold text-white truncate">
                   {user?.fullName || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Administrator'}
                 </p>
-                <p className="text-[10px] text-amber-300/80 font-medium truncate">Super Admin</p>
+                <p className="text-[10px] text-amber-300/80 font-medium truncate">
+                  {formatRoleLabel(rawRole)}
+                </p>
               </div>
             )}
           </div>
