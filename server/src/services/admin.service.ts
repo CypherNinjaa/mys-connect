@@ -4,6 +4,33 @@ import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserW
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { NotificationService } from './notification.service';
+import {
+  emitDashboardUpdated,
+  emitEventCancelled,
+  emitEventCreated,
+  emitEventDeleted,
+  emitEventPublished,
+  emitEventUnpublished,
+  emitEventUpdated,
+  emitGalleryAlbumCreated,
+  emitGalleryAlbumDeleted,
+  emitGalleryAlbumUpdated,
+  emitGalleryPhotosAdded,
+  emitGalleryPhotosDeleted,
+  emitMemberApproved,
+  emitMemberCreated,
+  emitMemberRoleChanged,
+  emitMemberStatusChanged,
+  emitNoticeCreated,
+  emitNoticeDeleted,
+  emitNoticePublished,
+  emitNoticeUnpublished,
+  emitNoticeUpdated,
+  emitRegistrationCancelled,
+  emitRegistrationCheckedIn,
+  emitRegistrationUpdated,
+} from '../socket/emitters';
+import { buildDashboardCounters, buildRegistrationSnapshot } from '../socket/snapshots';
 
 export interface ListUsersQuery {
   page?: number;
@@ -273,6 +300,21 @@ export class AdminService {
       },
     });
 
+    // PENDING -> ACTIVE is an approval, which the clients treat differently from
+    // a plain status edit (it is what clears the pending-approvals queue).
+    if (updatedUser) {
+      const isApproval =
+        newStatus === UserStatus.ACTIVE && previousStatus === UserStatus.PENDING;
+      if (isApproval) {
+        emitMemberApproved(updatedUser, adminUserId);
+      } else {
+        emitMemberStatusChanged(updatedUser, adminUserId);
+      }
+      void buildDashboardCounters(['activeMembers', 'pendingApprovals']).then((c) =>
+        emitDashboardUpdated(c, adminUserId),
+      );
+    }
+
     return updatedUser;
   }
 
@@ -295,6 +337,8 @@ export class AdminService {
         entityId: targetUserId,
       },
     });
+
+    emitMemberRoleChanged(user, adminUserId);
 
     return user;
   }
@@ -389,6 +433,11 @@ export class AdminService {
         metadata: { email: user.email, role: user.role },
       },
     });
+
+    emitMemberCreated(user, adminUserId);
+    void buildDashboardCounters(['totalMembers', 'activeMembers', 'pendingApprovals']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
 
     return user;
   }
@@ -488,6 +537,20 @@ export class AdminService {
       },
     });
 
+    // `users` was read before the write, so patch the new status onto each row
+    // rather than re-querying: the update applied the same value to all of them.
+    for (const u of users) {
+      const member = { ...u, status: newStatus };
+      if (newStatus === UserStatus.ACTIVE && u.status === UserStatus.PENDING) {
+        emitMemberApproved(member, adminUserId);
+      } else {
+        emitMemberStatusChanged(member, adminUserId);
+      }
+    }
+    void buildDashboardCounters(['activeMembers', 'pendingApprovals']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
     return { count: updated.count };
   }
 
@@ -522,6 +585,12 @@ export class AdminService {
         metadata: { count: updated.count, userIds, newRole },
       },
     });
+
+    // Same rationale as bulkUpdateMemberStatus: reuse the pre-read rows and
+    // overlay the role every one of them just received.
+    for (const u of users) {
+      emitMemberRoleChanged({ ...u, role: newRole }, adminUserId);
+    }
 
     return { count: updated.count };
   }
@@ -831,6 +900,11 @@ export class AdminService {
       },
     });
 
+    emitEventCreated(newEvent, adminUserId);
+    void buildDashboardCounters(['totalEvents', 'upcomingEvents']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
     return newEvent;
   }
 
@@ -930,6 +1004,11 @@ export class AdminService {
       );
     }
 
+    emitEventCreated(event, adminUserId);
+    void buildDashboardCounters(['totalEvents', 'upcomingEvents']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
     return event;
   }
 
@@ -1012,6 +1091,8 @@ export class AdminService {
       }
     }
 
+    emitEventUpdated(event, adminUserId);
+
     return event;
   }
 
@@ -1043,6 +1124,8 @@ export class AdminService {
       { action: 'PUBLISHED' }
     );
 
+    emitEventPublished(event, adminUserId);
+
     return event;
   }
 
@@ -1065,6 +1148,8 @@ export class AdminService {
         metadata: { title: event.title },
       },
     });
+
+    emitEventUnpublished(event, adminUserId);
 
     return event;
   }
@@ -1106,6 +1191,8 @@ export class AdminService {
       );
     }
 
+    emitEventCancelled(event, adminUserId);
+
     return event;
   }
 
@@ -1130,6 +1217,12 @@ export class AdminService {
         metadata: { title: event.title },
       },
     });
+
+    // The row is gone, so the chapter comes from the pre-delete read.
+    emitEventDeleted(id, event.chapter, adminUserId);
+    void buildDashboardCounters(['totalEvents', 'upcomingEvents', 'totalRegistrations']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
 
     return { success: true };
   }
@@ -1281,6 +1374,10 @@ export class AdminService {
       },
     });
 
+    void buildRegistrationSnapshot(updated).then((snap) => {
+      if (snap) emitRegistrationUpdated(snap, adminUserId);
+    });
+
     return updated;
   }
 
@@ -1335,6 +1432,15 @@ export class AdminService {
       [rsvp.user.id],
     );
 
+    // Cancelling frees a seat, so the snapshot is what keeps remaining-seat
+    // counts honest on every client watching this event.
+    void buildRegistrationSnapshot(updated).then((snap) => {
+      if (snap) emitRegistrationCancelled(snap, adminUserId);
+    });
+    void buildDashboardCounters(['totalRegistrations']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
     return updated;
   }
 
@@ -1379,6 +1485,11 @@ export class AdminService {
           member: rsvp.user.fullName,
         },
       },
+    });
+
+    // No dedicated "restored" event — the client reconciles from the new status.
+    void buildRegistrationSnapshot(updated).then((snap) => {
+      if (snap) emitRegistrationUpdated(snap, adminUserId);
     });
 
     return updated;
@@ -1439,6 +1550,10 @@ export class AdminService {
       },
     });
 
+    void buildRegistrationSnapshot(updated).then((snap) => {
+      if (snap) emitRegistrationCheckedIn(snap, adminUserId);
+    });
+
     return updated;
   }
 
@@ -1486,6 +1601,11 @@ export class AdminService {
           previousScanCount: rsvp.scanCount,
         },
       },
+    });
+
+    // Reversing a check-in lowers the attended total, which the snapshot recounts.
+    void buildRegistrationSnapshot(updated).then((snap) => {
+      if (snap) emitRegistrationUpdated(snap, adminUserId);
     });
 
     return updated;
@@ -1579,6 +1699,12 @@ export class AdminService {
       },
     });
 
+    // The emitter itself keeps a draft admin-only, so this is safe either way.
+    emitNoticeCreated(notice, adminUserId);
+    void buildDashboardCounters(['totalNotices']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
     return notice;
   }
 
@@ -1633,6 +1759,9 @@ export class AdminService {
       },
     });
 
+    // Carries the whole row, so a priority or pin change lands live.
+    emitNoticeUpdated(notice, adminUserId);
+
     return notice;
   }
 
@@ -1661,6 +1790,8 @@ export class AdminService {
       priority: notice.priority,
     });
 
+    emitNoticePublished(notice, adminUserId);
+
     return notice;
   }
 
@@ -1671,8 +1802,9 @@ export class AdminService {
     const notice = await prisma.notice.findUnique({ where: { id } });
     if (!notice) throw new AppError('Notice not found', 404);
 
+    let published: typeof notice | null = null;
     if (!notice.isPublished) {
-      await prisma.notice.update({
+      published = await prisma.notice.update({
         where: { id },
         data: { isPublished: true, publishedAt: new Date() },
       });
@@ -1687,6 +1819,13 @@ export class AdminService {
         metadata: { title: notice.title },
       },
     });
+
+    // Only an implicit publish changes the row; a re-broadcast of an
+    // already-published notice sends push only. The notification frames come
+    // from NotificationService, so nothing notification-shaped is emitted here.
+    if (published) {
+      emitNoticePublished(published, adminUserId);
+    }
 
     const result = await NotificationService.broadcastNoticeNotification(notice.id, notice.title, notice.content, {
       type: notice.type,
@@ -1741,6 +1880,8 @@ export class AdminService {
       },
     });
 
+    emitNoticeUnpublished(notice, adminUserId);
+
     return notice;
   }
 
@@ -1765,6 +1906,11 @@ export class AdminService {
         metadata: { title: notice.title },
       },
     });
+
+    emitNoticeDeleted(id, adminUserId);
+    void buildDashboardCounters(['totalNotices']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
 
     return { success: true };
   }
@@ -1906,6 +2052,11 @@ export class AdminService {
       },
     });
 
+    emitGalleryAlbumCreated(album, adminUserId);
+    void buildDashboardCounters(['totalAlbums']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
     return album;
   }
 
@@ -1983,6 +2134,8 @@ export class AdminService {
       },
     });
 
+    emitGalleryAlbumUpdated(album, adminUserId);
+
     return album;
   }
 
@@ -2009,6 +2162,12 @@ export class AdminService {
       },
     });
 
+    emitGalleryAlbumDeleted(id, adminUserId);
+    // Cascade removed this album's photos too, so the photo card moves as well.
+    void buildDashboardCounters(['totalAlbums', 'totalPhotos']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
     return { success: true };
   }
 
@@ -2031,13 +2190,19 @@ export class AdminService {
       throw new AppError('No photos were uploaded', 400);
     }
 
+    // `_count` rides along on the aggregate that was already being issued, so the
+    // post-insert total below costs no extra round trip.
     const last = await prisma.albumPhoto.aggregate({
       where: { albumId },
       _max: { sortOrder: true },
+      _count: { _all: true },
     });
     const startOrder = (last._max.sortOrder ?? -1) + 1;
 
-    const created = await prisma.albumPhoto.createMany({
+    // ...AndReturn rather than createMany: the socket payload carries the real
+    // rows so the mobile grid can insert them without a refetch, and that needs
+    // the generated ids. The HTTP response shape is unchanged.
+    const created = await prisma.albumPhoto.createManyAndReturn({
       data: photos.map((photo, index) => ({
         albumId,
         imageUrl: photo.imageUrl,
@@ -2065,7 +2230,25 @@ export class AdminService {
       },
     });
 
-    return { count: created.count };
+    // The actual rows travel with the frame, so clients append them in place.
+    emitGalleryPhotosAdded(
+      albumId,
+      created.map((photo) => ({
+        id: photo.id,
+        imageUrl: photo.imageUrl,
+        thumbnailUrl: photo.thumbnailUrl,
+        caption: photo.caption,
+        sortOrder: photo.sortOrder,
+      })),
+      last._count._all + created.length,
+      album.isPublished,
+      adminUserId,
+    );
+    void buildDashboardCounters(['totalPhotos']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
+    return { count: created.length };
   }
 
   /**
@@ -2076,7 +2259,12 @@ export class AdminService {
     data: { caption?: string | null },
     adminUserId: string,
   ) {
-    const photo = await prisma.albumPhoto.findUnique({ where: { id: photoId } });
+    const photo = await prisma.albumPhoto.findUnique({
+      where: { id: photoId },
+      // Album rides along on the lookup that already happens — the caption frame
+      // is album-scoped, and this keeps it to the same single round trip.
+      include: { album: { include: { _count: { select: { photos: true } } } } },
+    });
 
     if (!photo) {
       throw new AppError('Photo not found', 404);
@@ -2097,6 +2285,10 @@ export class AdminService {
       },
     });
 
+    // A caption edit is an album-level change; there is no per-photo update
+    // frame, and nothing was removed, so the album payload is the right fit.
+    emitGalleryAlbumUpdated(photo.album, adminUserId);
+
     return updated;
   }
 
@@ -2107,7 +2299,16 @@ export class AdminService {
   static async reorderAlbumPhotos(albumId: string, photoIds: string[], adminUserId: string) {
     const album = await prisma.album.findUnique({
       where: { id: albumId },
-      select: { id: true, title: true },
+      select: {
+        id: true,
+        title: true,
+        // Widened from id/title only so the reorder frame can carry the album
+        // payload without a second read.
+        category: true,
+        isPublished: true,
+        coverImageUrl: true,
+        _count: { select: { photos: true } },
+      },
     });
 
     if (!album) {
@@ -2141,6 +2342,9 @@ export class AdminService {
       },
     });
 
+    // Order is album state, and no photo was added or removed.
+    emitGalleryAlbumUpdated(album, adminUserId);
+
     return { success: true };
   }
 
@@ -2170,6 +2374,10 @@ export class AdminService {
       },
     });
 
+    // Cover is an album field and the photo set is untouched. No dashboard
+    // counter moves here.
+    emitGalleryAlbumUpdated(album, adminUserId);
+
     return album;
   }
 
@@ -2188,7 +2396,8 @@ export class AdminService {
     // Leaving a cover pointing at a deleted photo would show a broken image
     const album = await prisma.album.findUnique({
       where: { id: photo.albumId },
-      select: { coverImageUrl: true },
+      // Photo count comes off this existing read for the emit below.
+      select: { coverImageUrl: true, _count: { select: { photos: true } } },
     });
 
     if (album?.coverImageUrl === photo.imageUrl) {
@@ -2213,6 +2422,11 @@ export class AdminService {
         metadata: { albumId: photo.albumId },
       },
     });
+
+    emitGalleryPhotosDeleted(photo.albumId, [photoId], album?._count.photos, adminUserId);
+    void buildDashboardCounters(['totalPhotos']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
 
     return { success: true };
   }
@@ -2268,6 +2482,21 @@ export class AdminService {
         metadata: { photoCount: photos.length, albumIds },
       },
     });
+
+    // One frame per album: the payload is album-scoped, and a bulk selection can
+    // span albums. photoCount is left out — the loop above only reads the albums
+    // whose cover needed repair, so a reliable per-album total is not in scope.
+    for (const albumId of albumIds) {
+      emitGalleryPhotosDeleted(
+        albumId,
+        photos.filter((p) => p.albumId === albumId).map((p) => p.id),
+        undefined,
+        adminUserId,
+      );
+    }
+    void buildDashboardCounters(['totalPhotos']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
 
     return { success: true, count: photos.length };
   }

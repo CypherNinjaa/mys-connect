@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { useAuth, useClerk } from '@clerk/expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
-import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
+import { teardownSession } from '../../services/sessionTeardown';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface SettingItem {
@@ -62,7 +62,7 @@ export default function SettingsScreen() {
           onPress: async () => {
             try {
               // Detach this device's push token before the session goes away.
-              await unregisterPushNotificationsAsync(getToken);
+              await teardownSession(getToken);
               await signOut();
               router.replace('/(auth)/sign-in');
             } catch (err) {

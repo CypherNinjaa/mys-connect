@@ -21,6 +21,7 @@ import {
   MOCK_QUICK_ACCESS,
 } from '../../services/homeService';
 import { HomeCacheManager } from '../../services/homeCacheManager';
+import { useCacheChannel } from '../../hooks/useCacheChannel';
 import { HomeHeader } from '../../components/home/HomeHeader';
 import { EventCarousel } from '../../components/home/EventCarousel';
 import { QuickAccessCard } from '../../components/home/QuickAccessCard';
@@ -167,6 +168,16 @@ export default function HomeScreen() {
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSignedIn]);
+
+  // Realtime: re-read the patched cache instead of refetching. Only the slices
+  // that actually changed will differ, so React bails out of the rest.
+  useCacheChannel('home', () => {
+    const cached = HomeCacheManager.getCachedData();
+    if (!cached) return;
+    setUser(cached.user);
+    setFeaturedEvents(cached.featuredEvents);
+    setUpcomingEvents(cached.upcomingEvents);
+  });
 
   // Rate-Limited Manual Refresh
   const onRefresh = () => {

@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import type { ImperativeRouter } from 'expo-router';
 import { ApiService } from './api';
+import { wasDeliveredViaSocket } from './socket.service';
 
 /**
  * Marker recording which account this device last registered a push token for.
@@ -48,15 +49,32 @@ async function clearRegistration(): Promise<void> {
   }
 }
 
-// Configure foreground notification behavior
+/**
+ * Configure foreground notification behaviour.
+ *
+ * When the app is open the socket has usually already delivered and rendered the
+ * same change, so showing the push banner too would alert the member twice for
+ * one event. `wasDeliveredViaSocket` matches the push against what the socket
+ * just handled and suppresses only the banner and sound — the notification still
+ * lands in the tray and the badge, so nothing is lost if the member missed the
+ * in-app update.
+ *
+ * This runs at import time and cannot read React state, which is why the socket
+ * layer exposes its dedupe record as a module-level function.
+ */
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data as Record<string, unknown> | undefined;
+    const duplicate = wasDeliveredViaSocket(data);
+
+    return {
+      shouldShowBanner: !duplicate,
+      shouldShowList: true,
+      shouldShowAlert: !duplicate,
+      shouldPlaySound: !duplicate,
+      shouldSetBadge: true,
+    };
+  },
 });
 
 /**

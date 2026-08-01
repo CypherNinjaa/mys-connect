@@ -4,7 +4,7 @@ import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
-import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
+import { teardownSession } from '../../services/sessionTeardown';
 
 export default function DeactivatedScreen() {
   const { signOut, getToken } = useAuth();
@@ -19,7 +19,7 @@ export default function DeactivatedScreen() {
   const handleSignOut = async () => {
     // Best effort — the server rejects requests from a blocked account, but the
     // local marker still has to go so the next account registers cleanly.
-    await unregisterPushNotificationsAsync(getToken);
+    await teardownSession(getToken);
     await signOut();
     router.replace('/(auth)/sign-in');
   };

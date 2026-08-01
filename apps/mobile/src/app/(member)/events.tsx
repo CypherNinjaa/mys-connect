@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCustomAlert } from '../../context/CustomAlertContext';
 import { ApiService, EventRegistration } from '../../services/api';
 import { EventCacheManager } from '../../services/eventCacheManager';
+import { useCacheChannel } from '../../hooks/useCacheChannel';
 import { EventCard, EventItemData } from '../../components/events/EventCard';
 import { TicketCard } from '../../components/events/TicketCard';
 import { EventCardSkeleton } from '../../components/ui/SkeletonLoader';
@@ -173,6 +174,13 @@ export default function EventsScreen() {
     }
     void run();
   }, [loadEventsData]);
+
+  // Realtime: a socket event has patched the cache, so re-read it. No API call —
+  // the patch already carries the server's new values.
+  useCacheChannel('events', () => {
+    const cached = EventCacheManager.getCachedEvents();
+    if (cached) setAllEvents(cached);
+  });
 
   // My Tickets loader — deliberately not cached to disk. A ticket's scan count
   // changes at the gate, so the number of entries left has to come from the

@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCustomAlert } from '../../context/CustomAlertContext';
 import { ApiService } from '../../services/api';
 import { GalleryCacheManager } from '../../services/galleryCacheManager';
+import { useCacheChannel } from '../../hooks/useCacheChannel';
 import { GalleryCard, GalleryItemData } from '../../components/gallery/GalleryCard';
 import { SkeletonItem } from '../../components/ui/SkeletonLoader';
 import { downloadCloudinaryImage, buildCloudinaryUrl } from '../../utils/cloudinary';
@@ -192,6 +193,13 @@ export default function GalleryScreen() {
     }
     void run();
   }, [loadGalleryData]);
+
+  // Realtime: an admin finished a Cloudinary upload and the socket inserted the
+  // new photos into the cache. Re-read it — no refetch, no page reload.
+  useCacheChannel('gallery', () => {
+    const cached = GalleryCacheManager.getCachedData();
+    if (cached?.items) setAllGalleryItems(cached.items);
+  });
 
   // Rate-Limited Manual Pull-to-Refresh
   const handleRefresh = () => {

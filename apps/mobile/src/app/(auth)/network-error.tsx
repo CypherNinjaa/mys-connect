@@ -6,8 +6,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
 import { ApiService } from '../../services/api';
-import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
-import { NETWORK_CONFIG } from '../../config/network.config';
+import { teardownSession } from '../../services/sessionTeardown';
+import { NETWORK_CONFIG, refreshBaseUrl } from '../../config/network.config';
 
 export default function NetworkErrorScreen() {
   const { signOut, getToken } = useAuth();
@@ -18,6 +18,12 @@ export default function NetworkErrorScreen() {
   const handleRetry = async () => {
     setRetrying(true);
     try {
+      // Re-probe every candidate first. The developer may have started the
+      // server, switched networks, or moved between emulator and device since
+      // this screen appeared — retrying only the failed address would miss all
+      // three. In production there is a single candidate and this is a no-op.
+      await refreshBaseUrl();
+
       const isServerOnline = await ApiService.checkHealth();
       if (isServerOnline) {
         showAlert({
@@ -29,7 +35,7 @@ export default function NetworkErrorScreen() {
       } else {
         showAlert({
           title: 'Server Unreachable',
-          message: `Could not connect to MYS server at:\n${NETWORK_CONFIG.baseUrl}\n\nPlease check if your backend server is running and device network is active.`,
+          message: `Could not connect to MYS server. Tried:\n${NETWORK_CONFIG.candidates.join('\n')}\n\nPlease check if your backend server is running and device network is active.`,
           type: 'warning',
         });
       }
@@ -49,7 +55,7 @@ export default function NetworkErrorScreen() {
       // The server is unreachable by definition on this screen, so the DELETE
       // will almost certainly fail — the helper still clears the local marker,
       // which is what stops the next account inheriting this device's token.
-      await unregisterPushNotificationsAsync(getToken);
+      await teardownSession(getToken);
       await signOut();
       router.replace('/(auth)/sign-in');
     } catch {

@@ -11,11 +11,20 @@ export { Spacing } from './Spacing';
 
 /**
  * API Configuration — Single Source from Network Config
+ *
+ * `baseUrl` is a getter rather than a copied string. In development the network
+ * config probes several candidate addresses and may correct itself shortly after
+ * startup; a snapshot taken at import time would pin the first guess forever and
+ * every request would keep using an address already known to be unreachable.
  */
 export const API = {
-  baseUrl: NETWORK_CONFIG.baseUrl,
-  timeout: NETWORK_CONFIG.timeoutMs,
-} as const;
+  get baseUrl(): string {
+    return NETWORK_CONFIG.baseUrl;
+  },
+  get timeout(): number {
+    return NETWORK_CONFIG.timeoutMs;
+  },
+};
 
 /**
  * App Constants

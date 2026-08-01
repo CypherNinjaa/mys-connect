@@ -2,6 +2,8 @@ import { prisma } from '../utils/prisma';
 import { EventStatus, RSVPStatus, Prisma } from '@prisma/client';
 import { AppError } from '../middleware/errorHandler';
 import { buildQrPayload, generateRegistrationCode } from '../utils/ticket';
+import { emitRegistrationCancelled, emitRegistrationCreated } from '../socket/emitters';
+import { buildRegistrationSnapshot } from '../socket/snapshots';
 import QRCode from 'qrcode';
 
 /** Prisma's error code for a violated unique index. */
@@ -9,6 +11,32 @@ const UNIQUE_VIOLATION = 'P2002';
 
 /** Attempts before giving up on finding a free registration code. */
 const CODE_MINT_ATTEMPTS = 5;
+
+/**
+ * Broadcast a registration change once it has committed.
+ *
+ * Registering has three commit paths (re-register, upsert, and the retry loop),
+ * so the emit lives here rather than being repeated at each one.
+ *
+ * Deliberately not awaited: the snapshot runs three count queries to work out
+ * live seat totals, and a member's "register" tap must not wait on them. A
+ * failure inside is swallowed by the emitter layer — realtime is best-effort and
+ * can never turn a successful registration into an error response.
+ */
+function publishRegistration(
+  rsvp: { id: string; eventId: string; userId: string; status: RSVPStatus; registrationCode: string | null; scanCount: number; maxScans: number },
+  actorId: string,
+  kind: 'created' | 'cancelled' = 'created',
+): void {
+  void buildRegistrationSnapshot(rsvp).then((snapshot) => {
+    if (!snapshot) return;
+    if (kind === 'cancelled') {
+      emitRegistrationCancelled(snapshot, actorId);
+    } else {
+      emitRegistrationCreated(snapshot, actorId);
+    }
+  });
+}
 
 /**
  * Renders a ticket's QR as a PNG data URI.
@@ -172,6 +200,7 @@ export class EventService {
         where: { userId_eventId: { userId, eventId } },
         data: { status: RSVPStatus.REGISTERED },
       });
+      publishRegistration(rsvp, userId);
       return rsvp;
     }
 
@@ -181,7 +210,7 @@ export class EventService {
     for (let attempt = 0; attempt < CODE_MINT_ATTEMPTS; attempt += 1) {
       const registrationCode = generateRegistrationCode();
       try {
-        return await prisma.eventRSVP.upsert({
+        const rsvp = await prisma.eventRSVP.upsert({
           where: { userId_eventId: { userId, eventId } },
           update: {
             status: RSVPStatus.REGISTERED,
@@ -196,6 +225,8 @@ export class EventService {
             maxScans: event.qrScanLimit,
           },
         });
+        publishRegistration(rsvp, userId);
+        return rsvp;
       } catch (error) {
         const isCodeCollision =
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -212,7 +243,7 @@ export class EventService {
   }
 
   static async cancelRegistration(userId: string, eventId: string) {
-    return prisma.eventRSVP.update({
+    const rsvp = await prisma.eventRSVP.update({
       where: {
         userId_eventId: { userId, eventId },
       },
@@ -220,6 +251,9 @@ export class EventService {
         status: RSVPStatus.CANCELLED,
       },
     });
+
+    publishRegistration(rsvp, userId, 'cancelled');
+    return rsvp;
   }
 
   /**

@@ -1,5 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { NotificationStatus, NotificationChannel } from '@prisma/client';
+import { emitNotificationToUsers } from '../socket/emitters';
 
 export class NotificationService {
   /**
@@ -121,7 +122,22 @@ export class NotificationService {
       .map((u) => u.expoPushToken)
       .filter((t): t is string => Boolean(t && t.startsWith('ExponentPushToken')));
 
-    if (pushTokens.length > 0) {
+    const willPush = pushTokens.length > 0;
+
+    // Realtime first: a member with the app open sees this immediately, and the
+    // `alsoPushed` flag tells that client to suppress the push banner for the
+    // same notice so it is not announced twice.
+    emitNotificationToUsers(
+      activeUsers.map((u) => u.id),
+      {
+        title,
+        body: content.substring(0, 160),
+        data: { noticeId, type: 'NOTICE', ...extraData },
+        alsoPushed: willPush,
+      },
+    );
+
+    if (willPush) {
       void this.sendExpoPushBatch(pushTokens, title, content, {
         noticeId,
         type: 'NOTICE',
@@ -179,7 +195,21 @@ export class NotificationService {
       .map((u) => u.expoPushToken)
       .filter((t): t is string => Boolean(t && t.startsWith('ExponentPushToken')));
 
-    if (pushTokens.length > 0) {
+    const willPush = pushTokens.length > 0;
+
+    // See broadcastNoticeNotification — socket frame carries `alsoPushed` so a
+    // foregrounded client shows this once, not twice.
+    emitNotificationToUsers(
+      users.map((u) => u.id),
+      {
+        title,
+        body: body.substring(0, 160),
+        data: { eventId, type: 'EVENT', ...extraData },
+        alsoPushed: willPush,
+      },
+    );
+
+    if (willPush) {
       void this.sendExpoPushBatch(pushTokens, title, body, {
         eventId,
         type: 'EVENT',

@@ -10,11 +10,20 @@ import {
   setupNotificationListeners,
   handleInitialNotification,
 } from '../../services/notifications.service';
+import { useRealtime } from '../../hooks/useRealtime';
 
 export default function MemberLayout() {
   const { isLoaded, isSignedIn, getToken, userId } = useAuth();
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  // Realtime. Connects after Clerk confirms a signed-in member and tears itself
+  // down on sign-out. The socket owns the badge count while the app is open: it
+  // carries the server's authoritative total, which a local +1 cannot match once
+  // the member reads something on another device.
+  useRealtime({
+    onUnreadCount: setUnreadCount,
+  });
 
   useEffect(() => {
     let isMounted = true;

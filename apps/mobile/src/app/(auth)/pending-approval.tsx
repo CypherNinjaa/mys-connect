@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Spacing, APP } from '../../constants/theme';
 import { resolveAuthRoute } from '../../services/authGate';
-import { unregisterPushNotificationsAsync } from '../../services/notifications.service';
+import { teardownSession } from '../../services/sessionTeardown';
 
 export default function PendingApprovalScreen() {
   const { getToken, signOut } = useAuth();
@@ -58,7 +58,7 @@ export default function PendingApprovalScreen() {
   const handleSignOut = async () => {
     // Release the push token first — otherwise the next account on this handset
     // keeps receiving notifications meant for this member.
-    await unregisterPushNotificationsAsync(getToken);
+    await teardownSession(getToken);
     await signOut();
     router.replace('/(auth)/sign-in');
   };
