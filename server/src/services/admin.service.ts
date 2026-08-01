@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma';
 import { UserStatus, UserRole, EventStatus, RSVPStatus, NoticeType, NoticePriority, AlbumCategory, Prisma } from '@prisma/client';
-import { banClerkUser, unbanClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation, clerkClient } from '../utils/clerk';
+import { banClerkUser, unbanClerkUser, deleteClerkUser, updateClerkUserMetadata, createClerkUserWithoutPassword, createClerkInvitation, clerkClient } from '../utils/clerk';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { NotificationService } from './notification.service';
@@ -393,6 +393,96 @@ export class AdminService {
     }
 
     return updatedUser || user;
+  }
+
+  /**
+   * Delete user permanently from server DB and Clerk identity provider
+   */
+  static async deleteUser(targetUserId: string, adminUserId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: { profile: true },
+    });
+
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    if (user.id === adminUserId) {
+      throw new AppError('You cannot delete your own admin account', 400);
+    }
+
+    logger.info(`🚨 Admin ${adminUserId} initiating permanent deletion for user ${targetUserId} (${user.email})`);
+
+    // Resolve real Clerk User ID by email if current clerkId is synthetic
+    let realClerkId = user.clerkId;
+    if (user.email) {
+      try {
+        const clerkUsers = await clerkClient.users.getUserList({ emailAddress: [user.email] });
+        if (clerkUsers.data && clerkUsers.data.length > 0) {
+          realClerkId = clerkUsers.data[0].id;
+          logger.info(`Resolved real Clerk User ID ${realClerkId} for user deletion (${user.email})`);
+        }
+      } catch (clerkErr) {
+        logger.warn(`Could not resolve real Clerk User ID for ${user.email} during delete:`, clerkErr);
+      }
+    }
+
+    // 1. Delete from Clerk Identity Provider
+    if (realClerkId) {
+      try {
+        await deleteClerkUser(realClerkId);
+        logger.info(`Successfully deleted user ${realClerkId} (${user.email}) from Clerk identity provider.`);
+      } catch (clerkDeleteErr) {
+        logger.error(`Error deleting user from Clerk (${realClerkId}):`, clerkDeleteErr);
+      }
+    }
+
+    // 2. Cleanup dependent database records prior to user deletion
+    const matchingOrs: any[] = [{ id: targetUserId }];
+    if (user.email) matchingOrs.push({ email: user.email });
+    if (realClerkId) matchingOrs.push({ clerkId: realClerkId });
+
+    // Fetch all user IDs matching target ID, email, or clerk ID
+    const matchingUsers = await prisma.user.findMany({
+      where: { OR: matchingOrs },
+      select: { id: true },
+    });
+    const allUserIds = matchingUsers.map((u) => u.id);
+
+    // Delete dependent push tokens, notifications, notice reads, profiles, and RSVPs
+    await prisma.pushToken.deleteMany({ where: { userId: { in: allUserIds } } });
+    await prisma.notification.deleteMany({ where: { userId: { in: allUserIds } } });
+    await prisma.noticeRead.deleteMany({ where: { userId: { in: allUserIds } } });
+    await prisma.eventRSVP.deleteMany({ where: { userId: { in: allUserIds } } });
+    await prisma.profile.deleteMany({ where: { userId: { in: allUserIds } } });
+
+    // 3. Delete User record(s) from Prisma DB
+    const deleteResult = await prisma.user.deleteMany({
+      where: { OR: matchingOrs },
+    });
+
+    // 4. Log Audit Trail
+    await prisma.auditLog.create({
+      data: {
+        userId: adminUserId,
+        action: 'USER_DELETED_PERMANENTLY',
+        entity: 'User',
+        entityId: targetUserId,
+        metadata: {
+          targetEmail: user.email,
+          targetName: user.fullName || `${user.profile?.firstName || ''} ${user.profile?.lastName || ''}`.trim() || user.email,
+          deletedCount: deleteResult.count,
+          clerkUserId: realClerkId,
+        },
+      },
+    });
+
+    void buildDashboardCounters(['totalMembers', 'activeMembers', 'pendingApprovals']).then((c) =>
+      emitDashboardUpdated(c, adminUserId),
+    );
+
+    return { deleted: true, count: deleteResult.count };
   }
 
   /**

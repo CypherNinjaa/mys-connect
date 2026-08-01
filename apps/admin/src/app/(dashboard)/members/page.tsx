@@ -8,6 +8,7 @@ import {
   getMemberStats,
   updateUserStatus,
   updateUserRole,
+  deleteUser,
   bulkUpdateStatus,
   bulkUpdateRole,
   type UserData,
@@ -76,6 +77,7 @@ export default function MembersPage() {
     type: 'status' | 'role';
     user: UserData;
   } | null>(null);
+  const [deleteModalUser, setDeleteModalUser] = useState<UserData | null>(null);
   const [newValue, setNewValue] = useState('');
   const [reason, setReason] = useState('');
 
@@ -147,6 +149,20 @@ export default function MembersPage() {
       queryClient.invalidateQueries({ queryKey: ['member-stats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setActionModal(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+      return deleteUser(token, id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['members'] });
+      queryClient.invalidateQueries({ queryKey: ['member-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setDeleteModalUser(null);
     },
   });
 
@@ -558,16 +574,25 @@ export default function MembersPage() {
                           </button>
 
                           {isSuperAdmin && (
-                            <button
-                              onClick={() => {
-                                setActionModal({ type: 'role', user: member });
-                                setNewValue(member.role);
-                              }}
-                              className="p-1.5 text-amber-600/70 hover:text-amber-700 rounded-lg hover:bg-amber-50 transition-colors"
-                              title="Change Member Role (Super Admin)"
-                            >
-                              <Shield className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => {
+                                  setActionModal({ type: 'role', user: member });
+                                  setNewValue(member.role);
+                                }}
+                                className="p-1.5 text-amber-600/70 hover:text-amber-700 rounded-lg hover:bg-amber-50 transition-colors"
+                                title="Change Member Role (Super Admin)"
+                              >
+                                <Shield className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteModalUser(member)}
+                                className="p-1.5 text-rose-500/70 hover:text-rose-700 rounded-lg hover:bg-rose-50 transition-colors"
+                                title="Permanently Delete Member (Server DB & Clerk)"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -715,6 +740,53 @@ export default function MembersPage() {
                 className="px-4 py-2 text-xs font-bold bg-[#7A0E16] text-white rounded-xl hover:bg-[#600018] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {statusMutation.isPending || roleMutation.isPending ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalUser && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-rose-200 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Delete Member Account</h3>
+                <p className="text-xs font-semibold text-rose-600">Permanent & Irreversible Operation</p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200/80 rounded-xl p-3 text-xs text-rose-900 space-y-1 font-medium">
+              <p className="font-bold text-rose-700">Warning: Deleting user {deleteModalUser.email}</p>
+              <p>This action will permanently purge:</p>
+              <ul className="list-disc list-inside text-[11px] text-rose-800 space-y-0.5">
+                <li>Database user record & profile</li>
+                <li>Clerk authentication identity & sessions</li>
+                <li>All event RSVPs & notification records</li>
+              </ul>
+            </div>
+
+            <p className="text-xs text-slate-600 font-medium">
+              Are you sure you want to permanently delete this member from both the server database and Clerk?
+            </p>
+
+            <div className="flex gap-3 justify-end pt-2">
+              <button
+                onClick={() => setDeleteModalUser(null)}
+                className="px-4 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteModalUser.id)}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 text-xs font-bold bg-rose-600 text-white rounded-xl hover:bg-rose-700 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Permanently Delete'}
               </button>
             </div>
           </div>

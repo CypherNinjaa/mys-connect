@@ -88,6 +88,32 @@ export class AdminController {
   }
 
   /**
+   * DELETE /api/v1/admin/users/:id
+   * Permanently delete user from Database & Clerk Provider (SUPER_ADMIN only)
+   */
+  static async deleteUser(req: Request, res: Response, next: NextFunction) {
+    try {
+      const callerRole = req.userRole || req.user?.role;
+      if (callerRole !== 'SUPER_ADMIN') {
+        throw new AppError('Forbidden: Only SUPER_ADMIN can permanently delete user accounts.', 403);
+      }
+
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const adminUserId = req.user?.id || 'admin';
+
+      const result = await AdminService.deleteUser(id, adminUserId);
+
+      res.json({
+        success: true,
+        message: 'User account and identity deleted permanently from server and Clerk.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /api/v1/admin/users
    * Create user directly from Admin
    */

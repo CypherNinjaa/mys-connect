@@ -65,6 +65,28 @@ export async function unbanClerkUser(clerkUserId: string): Promise<boolean> {
 }
 
 /**
+ * Delete a user permanently in Clerk identity provider
+ */
+export async function deleteClerkUser(clerkUserId: string): Promise<boolean> {
+  if (isSyntheticClerkId(clerkUserId)) {
+    logger.info(`Skipping Clerk deletion for synthetic/invitation ID: ${clerkUserId}`);
+    return true;
+  }
+  try {
+    logger.info(`🗑️ Permanently deleting Clerk user account: ${clerkUserId}`);
+    await clerkClient.users.deleteUser(clerkUserId);
+    return true;
+  } catch (error: any) {
+    if (error.status === 404 || error.errors?.[0]?.code === 'resource_not_found') {
+      logger.warn(`Clerk user ${clerkUserId} not found in Clerk provider (404), skipping Clerk delete.`);
+      return true;
+    }
+    logger.error(`Failed to delete Clerk user ${clerkUserId}:`, error);
+    return false;
+  }
+}
+
+/**
  * Update user metadata in Clerk
  */
 export async function updateClerkUserMetadata(

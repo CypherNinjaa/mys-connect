@@ -78,6 +78,12 @@ export const updateUserRole = (token: string, id: string, role: string) =>
     body: JSON.stringify({ role }),
   });
 
+export const deleteUser = (token: string, id: string) =>
+  apiFetch<ApiResponse<{ deleted: boolean }>>(`/admin/users/${id}`, {
+    token,
+    method: 'DELETE',
+  });
+
 export const bulkUpdateStatus = (token: string, userIds: string[], status: string, reason?: string) =>
   apiFetch<ApiResponse<{ count: number }>>('/admin/members/bulk-status', {
     token,
