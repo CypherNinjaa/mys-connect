@@ -190,6 +190,25 @@ export class UserService {
   }
 
   /**
+   * Clear the profile photo. Mirrors updateAvatar's dual write — avatarUrl lives
+   * on both Profile and User, so leaving either one set would resurrect the old
+   * photo depending on which record the client reads first.
+   */
+  static async removeAvatar(userId: string) {
+    const profile = await prisma.profile.update({
+      where: { userId },
+      data: { avatarUrl: null },
+    });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: null },
+    });
+
+    return profile;
+  }
+
+  /**
    * Get active cities for dropdown selects
    */
   static async getCities() {

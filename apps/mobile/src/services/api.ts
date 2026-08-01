@@ -310,6 +310,22 @@ export class ApiService {
   }
 
   /**
+   * Clear the member's profile photo.
+   */
+  static async removeAvatar(token: string): Promise<{ avatarUrl?: string | null } | null> {
+    const res = await fetchWithTimeout(`${API.baseUrl}/users/avatar`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await parseJson(res, 'Failed to remove profile photo');
+    return (data?.data as { avatarUrl?: string | null }) ?? null;
+  }
+
+  /**
    * Fetch list of active cities for location dropdown
    */
   static async getCities() {

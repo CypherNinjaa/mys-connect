@@ -22,5 +22,6 @@ router.use(userResolver);
 router.get('/me', UserController.getMe);
 router.post('/register', UserController.register);
 router.post('/avatar', upload.single('avatar'), UserController.uploadAvatar);
+router.delete('/avatar', UserController.removeAvatar);
 
 export { router as userRoutes };

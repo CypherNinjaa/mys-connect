@@ -150,6 +150,46 @@ export default function ProfileScreen() {
     }
   };
 
+  // Clear the Cloudinary avatar and fall back to initials.
+  const handleRemoveAvatar = async () => {
+    // Resolved by the confirm dialog below so the caller's spinner stays up for
+    // the whole round trip rather than ending the moment the sheet closes.
+    return new Promise<void>((resolve) => {
+      showAlert({
+        title: 'Remove Photo',
+        message: 'Your profile photo will be removed and replaced with your initials.',
+        type: 'confirm',
+        onDismiss: () => resolve(),
+        buttons: [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve() },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                const token = await getToken();
+                if (token) {
+                  await ApiService.removeAvatar(token);
+                  setUser((prev: any) => ({
+                    ...prev,
+                    avatarUrl: null,
+                    profile: { ...prev?.profile, avatarUrl: null },
+                  }));
+                  await loadProfile();
+                  showAlert({ title: 'Photo Removed', message: 'Your profile photo has been removed.', type: 'success' });
+                }
+              } catch (err: any) {
+                showAlert({ title: 'Remove Failed', message: err.message || 'Failed to remove profile photo', type: 'error' });
+              } finally {
+                resolve();
+              }
+            },
+          },
+        ],
+      });
+    });
+  };
+
   // Realtime GPS Location Fetch with universal fallback & zero crash guarantee
   const handleFetchCurrentLocation = async () => {
     try {
@@ -317,8 +357,11 @@ export default function ProfileScreen() {
           height={88}
           borderRadius={44}
           allowUpload={true}
-          allowDownload={true}
+          allowView={true}
+          allowRemove={true}
           onUploadSuccess={handleUploadAvatarSuccess}
+          onRemove={handleRemoveAvatar}
+          actionSheetTitle="Profile Photo"
           transformOptions={{ crop: 'fill', gravity: 'face', quality: 'auto' }}
           style={{ marginBottom: 12 }}
         />

@@ -133,6 +133,34 @@ export class UserController {
   }
 
   /**
+   * DELETE /api/v1/users/avatar
+   * Clear the member's profile photo.
+   *
+   * The Cloudinary asset is deliberately left in place: uploads are content-
+   * addressed per upload, so an old URL is orphaned rather than dangling, and
+   * deleting remote assets from a user-facing request risks removing an image
+   * still referenced elsewhere.
+   */
+  static async removeAvatar(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new AppError('User account not found.', 401);
+      }
+
+      const profile = await UserService.removeAvatar(userId);
+
+      res.json({
+        success: true,
+        message: 'Profile photo removed successfully.',
+        data: profile,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * GET /api/v1/users/cities
    * List active cities for location dropdowns
    */

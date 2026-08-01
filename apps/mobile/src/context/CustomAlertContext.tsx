@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import {
   Modal,
   View,
@@ -23,6 +23,12 @@ export interface AlertOptions {
   message?: string;
   type?: 'success' | 'error' | 'warning' | 'info' | 'confirm';
   buttons?: AlertButton[];
+  /**
+   * Fired when the alert closes without a button being pressed (backdrop tap or
+   * Android back). Callers that await a decision need this — otherwise a
+   * dismissal leaves their promise pending forever.
+   */
+  onDismiss?: () => void;
 }
 
 interface CustomAlertContextType {
@@ -41,7 +47,12 @@ export const CustomAlertProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [visible, setVisible] = useState(false);
   const [options, setOptions] = useState<AlertOptions | null>(null);
 
+  // Guards against onDismiss firing twice, or firing after a button already
+  // handled the close.
+  const settledRef = useRef(true);
+
   const showAlert = useCallback((opts: AlertOptions) => {
+    settledRef.current = false;
     setOptions(opts);
     setVisible(true);
   }, []);
@@ -53,7 +64,19 @@ export const CustomAlertProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }, 200);
   }, []);
 
+  /** Close triggered by the backdrop or hardware back, not by a button. */
+  const dismissAlert = useCallback(() => {
+    const onDismiss = options?.onDismiss;
+    const wasUnsettled = !settledRef.current;
+    settledRef.current = true;
+    hideAlert();
+    if (wasUnsettled && onDismiss) {
+      onDismiss();
+    }
+  }, [hideAlert, options]);
+
   const handleButtonPress = (btn?: AlertButton) => {
+    settledRef.current = true;
     hideAlert();
     if (btn?.onPress) {
       btn.onPress();
@@ -88,9 +111,9 @@ export const CustomAlertProvider: React.FC<{ children: React.ReactNode }> = ({ c
           transparent
           visible={visible}
           animationType="fade"
-          onRequestClose={hideAlert}
+          onRequestClose={dismissAlert}
         >
-          <TouchableWithoutFeedback onPress={hideAlert}>
+          <TouchableWithoutFeedback onPress={dismissAlert}>
             <View style={styles.overlay}>
               <TouchableWithoutFeedback>
                 <View style={styles.card}>

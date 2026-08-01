@@ -492,6 +492,7 @@ export default function GalleryScreen() {
               pagingEnabled
               scrollEnabled={!isModalZoomed}
               initialScrollIndex={selectedIndex}
+              style={styles.modalSwiper}
               getItemLayout={(_, index) => ({
                 length: SCREEN_WIDTH,
                 offset: SCREEN_WIDTH * index,
@@ -744,9 +745,19 @@ const styles = StyleSheet.create({
   },
   slideItem: {
     width: SCREEN_WIDTH,
-    height: '100%',
+    // `alignSelf: 'stretch'`, not `height: '100%'`. A percentage height resolves
+    // against the parent's *resolved* height, and a horizontal FlatList's content
+    // container had none — so '100%' collapsed every slide to zero and the image
+    // vanished while the header and footer (siblings outside the list) kept
+    // rendering. Stretching fills the cross axis instead, which works now that
+    // the list itself carries `flex: 1` (styles.modalSwiper).
+    // Not `flex: 1` — inside a horizontal list that sets flexBasis on the *width*.
+    alignSelf: 'stretch',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalSwiper: {
+    flex: 1,
   },
   modalFooterBox: {
     padding: 20,

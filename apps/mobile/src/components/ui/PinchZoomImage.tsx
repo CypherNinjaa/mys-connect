@@ -1,6 +1,7 @@
-import React from 'react';
-import { StyleSheet, Dimensions, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Dimensions, View, Text, ActivityIndicator } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -25,6 +26,12 @@ export function PinchZoomImage({
   height = SCREEN_HEIGHT * 0.7,
   onZoomStateChange,
 }: PinchZoomImageProps) {
+  // A remote image that is still in flight, or that failed outright, would
+  // otherwise leave an indistinguishable black rectangle — the same symptom as
+  // the collapsed-layout bug. Track both so the viewer can say which it is.
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasFailed, setHasFailed] = useState(false);
+
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const translateX = useSharedValue(0);
@@ -124,6 +131,18 @@ export function PinchZoomImage({
     ],
   }));
 
+  if (hasFailed) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.stateBox}>
+          <Ionicons name="cloud-offline-outline" size={44} color="#A0AEC0" />
+          <Text style={styles.stateTitle}>Image unavailable</Text>
+          <Text style={styles.stateSub}>Check your connection and try again.</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <GestureDetector gesture={composedGesture}>
@@ -131,21 +150,58 @@ export function PinchZoomImage({
           source={{ uri }}
           style={[styles.image, { width, height }, animatedStyle]}
           resizeMode="contain"
+          onLoadStart={() => setIsLoading(true)}
+          onLoadEnd={() => setIsLoading(false)}
+          onError={() => {
+            setIsLoading(false);
+            setHasFailed(true);
+          }}
         />
       </GestureDetector>
+
+      {isLoading && (
+        <View style={styles.loaderOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color="#FFFFFF" />
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    // `flex: 1` rather than `height: '100%'`. A percentage height resolves
+    // against the parent's *resolved* height, and inside a horizontal FlatList
+    // the content container has none — so '100%' collapsed this view to zero
+    // and the image silently disappeared.
+    flex: 1,
     width: SCREEN_WIDTH,
-    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
   },
   image: {
     alignSelf: 'center',
+  },
+  loaderOverlay: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stateBox: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  stateTitle: {
+    marginTop: 12,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#E2E8F0',
+  },
+  stateSub: {
+    marginTop: 4,
+    fontSize: 12.5,
+    color: '#A0AEC0',
+    textAlign: 'center',
   },
 });
